@@ -2,19 +2,23 @@ import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import './index.css';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
-import About from './pages/About';
-import Services from './pages/Services';
+import Dashboard from './pages/Dashboard';
+import Campaigns from './pages/Campaigns';
+import Templates from './pages/Templates';
+import Settings from './pages/Settings';
 
 const App = () => {
   
   return (
-    <main className='background1'>
+    <main className='bg-white min-h-screen text-black'>
       <Router>
         <Navbar />
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/services" element={<Services />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/campaigns" element={<Campaigns />} />
+          <Route path="/templates" element={<Templates />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </Router>
     </main>
@@ -22,3 +26,4 @@ const App = () => {
 }
 
 export default App;
+

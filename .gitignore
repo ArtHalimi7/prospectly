@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Backend Settings & Databases
+server/.env
+server/leads.json
+server/templates.json
+server/campaigns.json
+server/node_modules/
+server/scraper_debug.png
+server/scraper_failed.png
+
