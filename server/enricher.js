@@ -62,11 +62,83 @@ export function detectLanguageByLocation(location = '', phone = '') {
   return 'English';
 }
 
+export function classifyPhoneNumber(phone = '', location = '') {
+  if (!phone || typeof phone !== 'string') {
+    return { type: 'none', whatsapp_status: 'none', formatted: '', label: 'No Phone' };
+  }
+
+  const rawDigits = phone.replace(/\D/g, '');
+  const loc = (location || '').toLowerCase();
+  
+  if (!rawDigits || rawDigits.length < 5) {
+    return { type: 'none', whatsapp_status: 'none', formatted: phone, label: 'Invalid' };
+  }
+
+  // Germany (015x, 016x, 017x or 4915x, 4916x, 4917x)
+  if (/^(?:49)?0?1[567]\d{7,9}$/.test(rawDigits) || /^(?:49)?1[567]\d{7,9}$/.test(rawDigits)) {
+    return { type: 'mobile', whatsapp_status: 'ready', formatted: phone, label: 'WA Ready' };
+  }
+
+  // Switzerland (075, 076, 077, 078, 079 or 4175..4179)
+  if (/^(?:41)?0?7[56789]\d{7}$/.test(rawDigits) || /^(?:41)?7[56789]\d{7}$/.test(rawDigits)) {
+    return { type: 'mobile', whatsapp_status: 'ready', formatted: phone, label: 'WA Ready' };
+  }
+
+  // Kosovo (383 43..49 or 043..049)
+  if (/^(?:383)?0?4[3456789]\d{6}$/.test(rawDigits) || /^(?:383)?4[3456789]\d{6}$/.test(rawDigits)) {
+    return { type: 'mobile', whatsapp_status: 'ready', formatted: phone, label: 'WA Ready' };
+  }
+
+  // Albania (355 67..69 or 067..069)
+  if (/^(?:355)?0?6[789]\d{7}$/.test(rawDigits) || /^(?:355)?6[789]\d{7}$/.test(rawDigits)) {
+    return { type: 'mobile', whatsapp_status: 'ready', formatted: phone, label: 'WA Ready' };
+  }
+
+  // Austria (43 650..699 or 0650..0699)
+  if (/^(?:43)?0?6(?:50|60|64|76|80|99)\d{5,8}$/.test(rawDigits)) {
+    return { type: 'mobile', whatsapp_status: 'ready', formatted: phone, label: 'WA Ready' };
+  }
+
+  // UK (44 7xxx or 07xxx)
+  if (/^(?:44)?0?7\d{9}$/.test(rawDigits)) {
+    return { type: 'mobile', whatsapp_status: 'ready', formatted: phone, label: 'WA Ready' };
+  }
+
+  // Regional Landlines:
+  // German landlines: 02xx (e.g. 0209 Gelsenkirchen), 03xx, 04xx (040 Hamburg), 05xx, 06xx, 07xx, 08xx, 09xx
+  // Swiss landlines: +41 44 (Zurich), 022 (Geneva), 031 (Bern), 061 (Basel), etc.
+  if (/^(?:49|41|43|383|355)?0?[2345689]/.test(rawDigits)) {
+    return { type: 'landline', whatsapp_status: 'landline', formatted: phone, label: 'Landline' };
+  }
+
+  return { type: 'unknown', whatsapp_status: 'unknown', formatted: phone, label: 'Unknown' };
+}
+
 export async function enrichLeadDetails({ business_name, category, location, phone_number, search_snippets, rating, reviews_count }) {
   const apiKey = process.env.GEMINI_API_KEY;
+  const phoneClassification = classifyPhoneNumber(phone_number, location);
+
+  // Fast pre-check: if snippets explicitly detected an active company domain, auto-flag it
+  const explicitDomainMatch = search_snippets && search_snippets.match(/\[DETECTED ACTIVE COMPANY DOMAIN VIA ORGANIC SEARCH\] Official Website:\s*(https?:\/\/[^\s]+)/i);
+  if (explicitDomainMatch && explicitDomainMatch[1]) {
+    console.log(`[ENRICHER SHIELD] Discovered live official website via search: ${explicitDomainMatch[1]}`);
+    return {
+      business_name,
+      status: 'Website Exists',
+      discovered_website: explicitDomainMatch[1],
+      phone_type: phoneClassification.type,
+      whatsapp_status: phoneClassification.whatsapp_status
+    };
+  }
+
   if (!apiKey) {
     console.warn('[ENRICHER] GEMINI_API_KEY not found in environment, returning mock values.');
-    return mockEnrichment(business_name, location, phone_number, rating, reviews_count);
+    const mock = mockEnrichment(business_name, location, phone_number, rating, reviews_count);
+    return {
+      ...mock,
+      phone_type: phoneClassification.type,
+      whatsapp_status: phoneClassification.whatsapp_status
+    };
   }
 
   const targetLang = detectLanguageByLocation(location, phone_number);
@@ -91,7 +163,7 @@ You are an OSINT lead generation assistant. Analyze this local business (which h
 ${search_snippets}
 
 ### Tasks:
-1. Check if they actually have an official website somewhere (not Facebook/Instagram/directories). If yes, set status to "Website Exists" and fill discovered_website.
+1. STRICT WEBSITE CHECK: Check if they actually have an official commercial website somewhere online (excluding generic business directories like Local.ch, Moneyhouse, Zefix, GelbeSeiten, Facebook, Instagram). If they have an active website (e.g. tec-schweiz.ch, example.de), set status to "Website Exists" and fill discovered_website with the full URL.
 2. Try to find the owner/decision-maker name.
 3. Find a direct contact email if possible.
 4. Write a cold email and a WhatsApp message in **${targetLang}**.
@@ -180,7 +252,8 @@ export async function generateCustomWhatsApp({
   customInstructions = ''
 }) {
   const apiKey = process.env.GEMINI_API_KEY;
-  const targetLang = language || detectLanguageByLocation(location, phone_number);
+  const rawLang = language || detectLanguageByLocation(location, phone_number);
+  const targetLang = (rawLang === 'Deutsch' || rawLang === 'German') ? 'German' : (rawLang === 'Albanian' ? 'Albanian' : 'English');
 
   if (!apiKey) {
     return generateMockWhatsApp(business_name, targetLang, estimated_owner_name, rating, reviews_count);

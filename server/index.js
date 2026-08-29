@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { connectDB } from './db.js';
-import { scrapeGoogleMaps, scrapeSearchSnippets } from './scraper.js';
+import { scrapeGoogleMaps, scrapeSearchSnippets, abortScraping } from './scraper.js';
 import { enrichLeadDetails, generateCustomWhatsApp } from './enricher.js';
 import { sendEmail } from './mailer.js';
 
@@ -741,15 +741,23 @@ function generateRetryQueries(originalQuery) {
   const cities = regionData.cities;
 
   // Generate city-specific queries using local language terms
-  // Limit to first 5 cities and first 2 terms to avoid excessive scraping
-  for (const term of localTerms.slice(0, 2)) {
-    for (const city of cities.slice(0, 5)) {
-      retryQueries.push(`${term} ${city}`);
-    }
+  // Strict limit to max 2 queries total to prevent long loops
+  const primaryTerm = localTerms[0] || 'Geschäft';
+  const primaryCity = cities[0] || 'Zürich';
+  retryQueries.push(`${primaryTerm} ${primaryCity}`);
+  
+  if (cities.length > 1) {
+    retryQueries.push(`${primaryTerm} ${cities[1]}`);
   }
 
   return retryQueries;
 }
+
+app.post('/api/scrape/stop', (req, res) => {
+  console.log('[SCRAPER] Received stop scrape command.');
+  abortScraping();
+  res.json({ success: true, message: 'Scraping halted by user.' });
+});
 
 app.post('/api/scrape', async (req, res) => {
   const { query, minRating, limit } = req.body;
@@ -758,7 +766,9 @@ app.post('/api/scrape', async (req, res) => {
   res.setHeader('Transfer-Encoding', 'chunked');
 
   const streamWrite = (msg) => {
-    res.write(`${msg}\n`);
+    if (!res.writableEnded) {
+      res.write(`${msg}\n`);
+    }
   };
 
   try {
@@ -772,18 +782,16 @@ app.post('/api/scrape', async (req, res) => {
       logCallback: streamWrite
     });
 
-    // 2. If 0 leads found, try smart retry with localized city-specific searches
+    // 2. If 0 leads found, try smart retry with max 2 localized searches
     if (rawLeads.length === 0) {
-      streamWrite(`[RETRY] No website-less leads found with initial query. Generating localized search alternatives...`);
+      streamWrite(`[RETRY] No website-less leads found with initial query. Checking 2 localized alternatives...`);
       
       const retryQueries = generateRetryQueries(query);
       
       if (retryQueries.length > 0) {
-        streamWrite(`[RETRY] Will try ${retryQueries.length} localized search variations to find website-less businesses...`);
-        
         const targetLimit = limit || 10;
         
-        for (const retryQuery of retryQueries) {
+        for (const retryQuery of retryQueries.slice(0, 2)) {
           if (rawLeads.length >= targetLimit) {
             streamWrite(`[RETRY] Reached target of ${targetLimit} leads. Stopping search.`);
             break;
@@ -795,12 +803,12 @@ app.post('/api/scrape', async (req, res) => {
             const retryLeads = await scrapeGoogleMaps({
               query: retryQuery,
               minRating: minRating || 4.0,
-              limit: Math.min(5, targetLimit - rawLeads.length), // Small batches per retry
+              limit: Math.min(5, targetLimit - rawLeads.length),
               logCallback: streamWrite
             });
             
             if (retryLeads.length > 0) {
-              streamWrite(`[RETRY] ✅ Found ${retryLeads.length} website-less leads from "${retryQuery}"!`);
+              streamWrite(`[RETRY] Found ${retryLeads.length} website-less leads from "${retryQuery}"!`);
               rawLeads.push(...retryLeads);
             }
           } catch (retryErr) {
@@ -809,16 +817,13 @@ app.post('/api/scrape', async (req, res) => {
         }
         
         if (rawLeads.length === 0) {
-          streamWrite(`[WARNING] No website-less leads found after ${retryQueries.length} localized searches.`);
+          streamWrite(`[WARNING] No website-less leads found after localized searches.`);
           streamWrite(`[TIP] Try more specific business types (e.g., "Friseur Hamburg", "Reinigung Zürich") or target smaller cities.`);
-          streamWrite(`[TIP] Businesses in highly digitized markets (auto dealerships, restaurants in major cities) almost always have websites.`);
           res.end();
           return;
         }
       } else {
         streamWrite(`[WARNING] No website-less leads found matching query: "${query}"`);
-        streamWrite(`[TIP] Try searching for specific business types in specific cities (e.g., "Friseur Hamburg" instead of "hairdresser Germany").`);
-        streamWrite(`[TIP] Smaller, service-based businesses (cleaners, tailors, barbers) are more likely to lack websites.`);
         res.end();
         return;
       }
