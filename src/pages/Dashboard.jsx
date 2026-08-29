@@ -360,22 +360,21 @@ const Dashboard = () => {
   };
 
   const calculateLeadIntent = (lead) => {
-    if (!lead) return { score: 50, level: 'Moderate', color: 'text-sky-400 bg-sky-950/40 border-sky-500/30', signals: [], pitchRecommendation: '' };
+    if (!lead) return { score: 50, level: 'Moderate', color: 'text-zinc-300 bg-zinc-900 border-zinc-700', signals: [], pitchRecommendation: '' };
     
-    let score = 35; // Base score for having no official website on Google Maps
+    let score = 35;
     const signals = [];
 
     const rating = parseFloat(lead.rating) || 0;
     const reviews = parseInt(lead.reviews_count) || 0;
 
-    // 1. Review volume & rating (Proven Cash Flow & Demand)
     if (reviews >= 40 && rating >= 4.5) {
       score += 30;
       signals.push({
         type: 'high_demand',
         icon: '🚀',
-        title: 'High Customer Volume & Cash Flow',
-        desc: `${reviews} Google reviews (${rating.toFixed(1)}★) prove steady foot traffic and active paying clients.`
+        title: 'High Client Volume',
+        desc: `${reviews} reviews (${rating.toFixed(1)}★) show established business cash flow.`
       });
     } else if (reviews >= 15 && rating >= 4.0) {
       score += 20;
@@ -383,68 +382,65 @@ const Dashboard = () => {
         type: 'steady_demand',
         icon: '⭐',
         title: 'Strong Local Reputation',
-        desc: `${reviews} positive Google reviews (${rating.toFixed(1)}★). Ready to convert map searches into booked clients.`
+        desc: `${reviews} Google reviews (${rating.toFixed(1)}★). Ready for a direct landing page.`
       });
     } else if (reviews > 0) {
       score += 10;
       signals.push({
         type: 'local_active',
         icon: '📍',
-        title: 'Active Local Business',
-        desc: `Verified listing on Google Maps with ${reviews} client review${reviews > 1 ? 's' : ''}.`
+        title: 'Active Google Listing',
+        desc: `Verified on Google Maps with ${reviews} client review${reviews > 1 ? 's' : ''}.`
       });
     }
 
-    // 2. Direct Outreach Reachability
     if (lead.phone_number) {
       score += 15;
       signals.push({
         type: 'wa_direct',
         icon: '💬',
-        title: 'Direct WhatsApp Contact Ready',
-        desc: 'Direct mobile phone enables sending a personalized 1-on-1 visual website mockup instantly.'
+        title: 'WhatsApp Ready',
+        desc: 'Direct mobile phone enables instant 1-on-1 visual preview.'
       });
     }
 
-    // 3. Social Media Presence Without Website
     if (lead.primary_social_pitch_url || (lead.quick_pitch_hook && lead.quick_pitch_hook.toLowerCase().includes('social'))) {
       score += 15;
       signals.push({
         type: 'social_active',
         icon: '📱',
-        title: 'Social-Only Web Presence',
-        desc: 'Markets on Instagram/Facebook without a dedicated booking landing page to capture organic web traffic.'
+        title: 'Social-Only Presence',
+        desc: 'Active on social media without a dedicated landing page.'
       });
     }
 
-    // 4. Decision Maker Identified
     if (lead.estimated_owner_name && lead.estimated_owner_name !== 'Unknown') {
       score += 5;
       signals.push({
         type: 'owner_found',
         icon: '👤',
-        title: `Owner Name Identified (${lead.estimated_owner_name})`,
-        desc: 'Direct name enables high-response personalized first contact.'
+        title: `Owner: ${lead.estimated_owner_name}`,
+        desc: 'Personalized outreach ready.'
       });
     }
 
     score = Math.min(score, 98);
 
     let level = 'Moderate';
-    let color = 'text-sky-400 bg-sky-950/40 border-sky-500/30';
+    let color = 'text-zinc-300 bg-zinc-900/80 border-zinc-700/80';
     if (score >= 85) {
       level = 'Very High Intent';
-      color = 'text-rose-400 bg-rose-950/40 border-rose-500/30';
+      color = 'text-amber-300 bg-amber-950/40 border-amber-800/50';
     } else if (score >= 70) {
       level = 'High Intent';
-      color = 'text-amber-400 bg-amber-950/40 border-amber-500/30';
+      color = 'text-zinc-200 bg-zinc-800 border-zinc-700';
     }
 
     let pitchRecommendation = 'Showcase a clean visual landing page mockup with direct call and WhatsApp buttons.';
     if (signals.some(s => s.type === 'high_demand')) {
-      pitchRecommendation = `Lead with their ${rating.toFixed(1)}★ rating: "You have ${reviews} top reviews—a modern landing page with direct booking will turn visitors into instant customers."`;
+      pitchRecommendation = `Highlight their ${rating.toFixed(1)}★ rating: "With ${reviews} reviews, a dedicated landing page will convert map visitors into instant paying clients."`;
     } else if (signals.some(s => s.type === 'social_active')) {
-      pitchRecommendation = 'Pitch converting their social media followers into direct bookings with a fast mobile landing page.';
+      pitchRecommendation = 'Pitch turning social media followers into direct bookings with a fast mobile landing page.';
     }
 
     return { score, level, color, signals, pitchRecommendation };
@@ -452,7 +448,7 @@ const Dashboard = () => {
 
   const filteredLeads = leads.filter(lead => {
     if (filter === 'All') return true;
-    if (filter === 'High Intent') return calculateLeadIntent(lead).score >= 80;
+    if (filter === 'High Intent') return calculateLeadIntent(lead).score >= 75;
     if (filter === 'Uncontacted') return !isLeadContacted(lead);
     if (filter === 'Contacted') return isLeadContacted(lead);
     if (filter === 'WhatsApp Ready') return Boolean(lead.phone_number);
@@ -520,14 +516,7 @@ const Dashboard = () => {
   const hasNextWhatsAppLead = currentWhatsAppIndex >= 0 && currentWhatsAppIndex < leadsWithPhone.length - 1;
 
   // Active lead for inspector
-  const activeLead = leads.find(l => l.id === activeLeadId) || filteredLeads[0] || null;
-
-  // Auto-select first lead when leads load
-  useEffect(() => {
-    if (leads.length > 0 && !activeLeadId) {
-      setActiveLeadId(leads[0].id);
-    }
-  }, [leads, activeLeadId]);
+  const activeLead = leads.find(l => l.id === activeLeadId) || null;
 
   // Combined search and status filter
   const displayedLeads = filteredLeads.filter(l => {
@@ -646,7 +635,7 @@ const Dashboard = () => {
   };
 
   // Quick navigation
-  const currentLeadIndex = displayedLeads.findIndex(l => l.id === activeLead?.id);
+  const currentLeadIndex = displayedLeads.findIndex(l => l.id === activeLeadId);
   const handlePrevLead = () => {
     if (currentLeadIndex > 0) {
       setActiveLeadId(displayedLeads[currentLeadIndex - 1].id);
@@ -658,57 +647,66 @@ const Dashboard = () => {
     }
   };
 
-  return (
-    <div className="pt-36 pb-20 px-4 sm:px-8 md:px-12 bg-[#09090b] min-h-screen text-white font-sans relative overflow-hidden selection:bg-white/20 selection:text-white">
-      
-      {/* Subtle fine technical grid & ambient anthracite lighting */}
-      <div className="absolute inset-0 subtle-grid opacity-15 pointer-events-none z-0"></div>
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-6xl h-[400px] bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,rgba(255,255,255,0.03),transparent_70%)] pointer-events-none z-0"></div>
+  const toggleLeadExpand = (id) => {
+    setActiveLeadId(prev => prev === id ? null : id);
+  };
 
-      <div className="max-w-7xl mx-auto relative z-10">
+  return (
+    <div className="pt-28 pb-20 px-4 sm:px-8 md:px-12 bg-[#050507] min-h-screen text-white font-sans relative overflow-hidden selection:bg-white/20 selection:text-white">
+      
+      {/* 1. Seamless Top-Down Radial Ambient Glow matching Hero.jsx */}
+      <div className="absolute top-0 left-0 right-0 h-[600px] bg-[radial-gradient(ellipse_100%_80%_at_50%_0%,rgba(140,130,255,0.09),rgba(255,255,255,0.02)_40%,transparent_70%)] pointer-events-none z-0"></div>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_50%,#050507_100%)] pointer-events-none z-0"></div>
+
+      <div className="max-w-5xl mx-auto relative z-10">
         
-        {/* Compact Telemetry & Action Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 pb-5 border-b border-white/[0.06]">
+        {/* Subtle Top Tagline */}
+        <div className="flex items-center gap-2 mb-2 text-zinc-500 text-xs font-mono-accent uppercase tracking-[0.25em]">
+          <span className="w-1 h-1 rounded-full bg-zinc-400"></span>
+          <span>Lead Intelligence & Direct Outreach</span>
+          <span className="w-1 h-1 rounded-full bg-zinc-400"></span>
+        </div>
+
+        {/* Action & Telemetry Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-zinc-800/80">
           
-          {/* Left Title & Status */}
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-white font-display tracking-tight">
-                Outreach Workspace
-              </h1>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></span>
-              <span className="text-[11px] font-mono-accent uppercase tracking-[0.2em] text-zinc-500">
-                {leads.length} LEADS EXTRACTED
-              </span>
-            </div>
+          {/* Main Title & Status Dot */}
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-[-0.03em] text-white font-display">
+              Outreach Workspace
+            </h1>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-mono-accent text-zinc-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+              <span>{leads.length} Leads</span>
+            </span>
           </div>
 
-          {/* Right Compact Metric Ribbon & Actions */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Action Pills */}
+          <div className="flex flex-wrap items-center gap-2.5">
             
-            {/* Inline Mini-Telemetry Chips */}
-            <div className="hidden sm:flex items-center gap-2 bg-zinc-950/80 border border-white/[0.08] rounded-full px-3.5 py-1.5 text-[11px] font-mono-accent text-zinc-400">
-              <span className="text-emerald-400 font-bold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                {leads.filter(isLeadContacted).length}/{leads.length}
+            {/* Quick Metrics Capsule */}
+            <div className="hidden md:flex items-center gap-2 bg-zinc-950/80 border border-zinc-800 rounded-full px-3.5 py-1.5 text-[11px] font-mono-accent text-zinc-400 shadow-sm">
+              <span className="text-emerald-400 font-medium">
+                {leads.filter(isLeadContacted).length} Contacted
               </span>
-              <span>Contacted</span>
-              <span className="text-zinc-700">|</span>
-              <span className="text-amber-400 font-bold">{leads.filter(l => !isLeadContacted(l)).length}</span>
-              <span>Pending</span>
-              <span className="text-zinc-700">|</span>
-              <span className="text-white font-bold">{leads.filter(l => l.phone_number).length}</span>
-              <span>WA Ready</span>
+              <span className="text-zinc-700">·</span>
+              <span className="text-zinc-300">
+                {leads.filter(l => !isLeadContacted(l)).length} Pending
+              </span>
+              <span className="text-zinc-700">·</span>
+              <span className="text-zinc-400">
+                {leads.filter(l => l.phone_number).length} WhatsApp
+              </span>
             </div>
 
-            {/* Scrape Trigger Button */}
+            {/* Scrape Trigger Button (Hero White Pill Style) */}
             <button
               onClick={() => {
-                const q = prompt("Enter scraping search query (e.g. Autohandel Zürich, Dachdecker Hamburg):");
+                const q = prompt("Enter search query (e.g. Autohandel Zürich, Dachdecker Hamburg):");
                 if (q) triggerScraping(q, 4.0, 10);
               }}
               disabled={scrapingActive}
-              className="text-xs font-semibold text-black bg-white hover:bg-zinc-200 disabled:opacity-50 rounded-full px-4 py-2 shadow-[0_0_20px_rgba(255,255,255,0.15)] flex items-center gap-1.5 transition-all cursor-pointer font-mono-accent uppercase tracking-wider shrink-0"
+              className="h-9 px-4 bg-white hover:bg-zinc-200 disabled:opacity-50 text-black text-xs font-semibold rounded-full transition-all duration-200 shadow-[0_0_20px_rgba(255,255,255,0.18)] hover:shadow-[0_0_25px_rgba(255,255,255,0.35)] flex items-center gap-1.5 cursor-pointer font-mono-accent uppercase tracking-wider shrink-0"
             >
               <span>{scrapingActive ? 'Scraping...' : '+ New Scrape'}</span>
             </button>
@@ -717,16 +715,16 @@ const Dashboard = () => {
             <button
               onClick={startCampaign}
               disabled={selectedLeads.length === 0}
-              className="text-xs font-semibold text-zinc-400 hover:text-white bg-zinc-900/60 hover:bg-zinc-800 disabled:opacity-30 rounded-full px-4 py-2 border border-white/[0.08] transition-all cursor-pointer font-mono-accent uppercase tracking-wider shrink-0"
+              className="h-9 px-4 bg-zinc-950/60 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 disabled:opacity-30 text-zinc-300 hover:text-white text-xs font-mono-accent rounded-full transition-all cursor-pointer uppercase tracking-wider shrink-0"
             >
               Email ({selectedLeads.length})
             </button>
 
-            {/* Delete Selected */}
+            {/* Delete Selected (when > 0) */}
             {selectedLeads.length > 0 && (
               <button
                 onClick={handleBatchDelete}
-                className="text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-950/60 border border-rose-800/40 rounded-full px-4 py-2 transition-all cursor-pointer font-mono-accent uppercase tracking-wider shrink-0 flex items-center gap-1.5 shadow-[0_0_15px_rgba(244,63,94,0.15)]"
+                className="h-9 px-4 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-300 hover:text-rose-200 text-xs font-mono-accent rounded-full transition-all cursor-pointer uppercase tracking-wider shrink-0 flex items-center gap-1.5 shadow-[0_0_15px_rgba(244,63,94,0.15)]"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -738,40 +736,28 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Live Scraper Output macOS Terminal Window */}
+        {/* Live Scraper Terminal (Sleek macOS dark styling) */}
         {scrapingActive && (
-          <div className="bg-[#0b0c10] border border-white/[0.12] rounded-2xl mb-6 shadow-[0_20px_50px_rgba(0,0,0,0.9)] overflow-hidden font-mono text-xs animate-slide-down backdrop-blur-2xl">
-            
-            {/* macOS Window Header Bar */}
-            <div className="bg-zinc-900/90 border-b border-white/[0.08] px-4 py-2.5 flex items-center justify-between">
-              
-              {/* Traffic Light Dots */}
+          <div className="bg-zinc-950/90 border border-zinc-800 rounded-2xl mb-6 shadow-2xl overflow-hidden font-mono text-xs animate-slide-down backdrop-blur-2xl">
+            <div className="bg-zinc-900/90 border-b border-zinc-800 px-4 py-2.5 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e] inline-block shadow-sm"></span>
-                <span className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123] inline-block shadow-sm"></span>
-                <span className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] inline-block shadow-sm"></span>
+                <span className="w-3 h-3 rounded-full bg-[#ff5f56] inline-block"></span>
+                <span className="w-3 h-3 rounded-full bg-[#ffbd2e] inline-block"></span>
+                <span className="w-3 h-3 rounded-full bg-[#27c93f] inline-block"></span>
               </div>
-
-              {/* Window Title */}
               <div className="text-[11px] text-zinc-400 font-mono flex items-center gap-2">
-                <span className="text-zinc-600">terminal</span>
+                <span>maps-enricher</span>
                 <span>—</span>
-                <span className="text-zinc-300 font-semibold">maps-enricher.sh</span>
-                <span className="text-[10px] text-zinc-600">--live</span>
+                <span className="text-zinc-300 font-semibold">{scrapeQuery || 'live stream'}</span>
               </div>
-
-              {/* Status Indicator */}
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest font-mono">STREAM ACTIVE</span>
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest font-mono">ACTIVE</span>
               </div>
-
             </div>
 
-            {/* Terminal Body with Line Numbers and Auto-Scroll */}
-            <div className="p-4 max-h-56 overflow-y-auto font-mono text-xs leading-relaxed space-y-1 bg-[#090a0d]/90 divide-y divide-transparent">
+            <div className="p-4 max-h-48 overflow-y-auto font-mono text-xs leading-relaxed space-y-1 bg-[#050507]/95">
               {scrapeLogs.map((log, index) => {
-                // Parse tag if present
                 const match = log.match(/^(\[[A-Z]+\])(.*)$/);
                 const tag = match ? match[1] : '';
                 const rest = match ? match[2] : log;
@@ -785,568 +771,412 @@ const Dashboard = () => {
                 else if (tag === '[ERROR]') tagColor = 'text-rose-400';
 
                 return (
-                  <div key={index} className="flex items-start gap-2 py-0.5 hover:bg-white/[0.02] px-1 rounded transition-colors">
-                    <span className="text-zinc-600 select-none text-[10px] w-5 text-right font-mono shrink-0">
+                  <div key={index} className="flex items-start gap-2 py-0.5 px-1 rounded hover:bg-white/[0.02] transition-colors">
+                    <span className="text-zinc-600 select-none text-[10px] w-5 text-right shrink-0">
                       {String(index + 1).padStart(2, '0')}
                     </span>
-                    <span className="text-zinc-700 select-none font-mono">│</span>
-                    <div className="font-mono flex-1 break-words">
+                    <span className="text-zinc-700 select-none">│</span>
+                    <div className="flex-1 break-words">
                       {tag && <span className={`${tagColor} font-bold mr-1.5`}>{tag}</span>}
                       <span className="text-zinc-300">{rest}</span>
                     </div>
                   </div>
                 );
               })}
-              
-              {/* Pulsing Caret */}
-              <div className="flex items-center gap-2 pt-1 text-emerald-400">
-                <span className="text-zinc-600 select-none text-[10px] w-5 text-right font-mono shrink-0">
-                  {String(scrapeLogs.length + 1).padStart(2, '0')}
-                </span>
-                <span className="text-zinc-700 select-none font-mono">│</span>
-                <span className="inline-block w-2 h-4 bg-emerald-400 animate-pulse"></span>
-              </div>
-
               <div ref={terminalLogsEndRef} />
             </div>
-
           </div>
         )}
 
-        {/* Search & Filter Capsule Bar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-5">
+        {/* Pill Search & Preset Filter Bar (Hero Style) */}
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-3 mb-6">
           
-          {/* Instant Search input */}
-          <div className="relative w-full sm:w-80">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-              </svg>
+          {/* Pill Search Input */}
+          <div className="w-full lg:w-96 relative group">
+            <div className="relative rounded-full bg-zinc-950/80 border border-zinc-800 hover:border-zinc-700 focus-within:border-zinc-500 backdrop-blur-2xl px-4 py-2 transition-all duration-300 shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)] flex items-center gap-2.5">
+              <div className="text-zinc-500 group-focus-within:text-zinc-300 transition-colors shrink-0">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                placeholder="Search leads, city, or niche..."
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                className="w-full bg-transparent border-none text-white placeholder-zinc-500 focus:outline-none focus:ring-0 text-xs font-normal font-mono-accent"
+              />
+              {searchFilter && (
+                <button
+                  type="button"
+                  onClick={() => setSearchFilter('')}
+                  className="text-zinc-500 hover:text-zinc-300 text-xs px-1"
+                >
+                  ✕
+                </button>
+              )}
             </div>
-            <input
-              type="text"
-              placeholder="Search leads, city, or niche..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              className="w-full bg-zinc-950/70 border border-white/[0.08] hover:border-white/15 focus:border-zinc-500 rounded-full pl-9 pr-4 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none transition-colors font-mono-accent"
-            />
           </div>
 
-          {/* Filter Status Pills */}
-          <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+          {/* Preset Filter Pills (Matching Hero preset chips) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto w-full lg:w-auto pb-1 lg:pb-0 scrollbar-none">
             {[
               { id: 'All', label: `All (${leads.length})` },
-              { id: 'High Intent', label: `🔥 High Intent (${leads.filter(l => calculateLeadIntent(l).score >= 80).length})` },
+              { id: 'High Intent', label: `🔥 High Intent (${leads.filter(l => calculateLeadIntent(l).score >= 75).length})` },
               { id: 'Uncontacted', label: `💬 Uncontacted (${leads.filter(l => !isLeadContacted(l)).length})` },
               { id: 'Contacted', label: `✓ Contacted (${leads.filter(isLeadContacted).length})` },
               { id: 'WhatsApp Ready', label: 'WA Ready' },
               { id: 'WhatsApp Sent', label: 'WA Sent' },
-              { id: 'Emailed', label: 'Emailed' },
-              { id: 'Enriched', label: 'Enriched' }
-            ].map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setFilter(id)}
-                className={`text-[11px] font-mono-accent px-3 py-1 rounded-full transition-all duration-200 cursor-pointer whitespace-nowrap ${
-                  filter === id
-                    ? 'bg-zinc-800 text-white font-semibold border border-white/20 shadow-sm'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+              { id: 'Emailed', label: 'Emailed' }
+            ].map(({ id, label }) => {
+              const isActive = filter === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFilter(id)}
+                  className={`text-[11px] px-3.5 py-1.5 rounded-full transition-all duration-200 cursor-pointer whitespace-nowrap font-mono-accent uppercase tracking-wider ${
+                    isActive
+                      ? 'bg-zinc-800 text-white border border-zinc-600 shadow-[0_0_15px_rgba(255,255,255,0.1)] font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-200 bg-zinc-950/60 hover:bg-zinc-900 border border-zinc-800/80'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
         </div>
 
-        {/* Master-Detail Workspace Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Extracted Leads Stream with Inline Expandable Outreach Accordion */}
+        <div className="space-y-3">
           
-          {/* Left Column: Leads Stream List */}
-          <div className="lg:col-span-6 bg-zinc-950/70 border border-white/[0.08] rounded-2xl overflow-hidden shadow-2xl backdrop-blur-xl flex flex-col max-h-[720px]">
-            
-            {/* List Header */}
-            <div className="p-3.5 border-b border-white/[0.06] bg-zinc-900/40 flex items-center justify-between text-xs font-mono-accent text-zinc-400">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  onChange={handleSelectAll}
-                  checked={selectedLeads.length === displayedLeads.length && displayedLeads.length > 0}
-                  className="rounded bg-zinc-900 border-zinc-700 accent-white cursor-pointer"
-                />
-                <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-semibold">
-                  Extracted Businesses ({displayedLeads.length})
-                </span>
-              </div>
-              <span className="text-[10px] text-zinc-500">Instant select</span>
+          {/* Header Bar */}
+          <div className="px-5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl flex items-center justify-between text-xs font-mono-accent text-zinc-400">
+            <div className="flex items-center gap-2.5">
+              <input
+                type="checkbox"
+                onChange={handleSelectAll}
+                checked={selectedLeads.length === displayedLeads.length && displayedLeads.length > 0}
+                className="rounded bg-zinc-900 border-zinc-700 accent-white cursor-pointer w-4 h-4"
+              />
+              <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-semibold">
+                Extracted Businesses ({displayedLeads.length})
+              </span>
             </div>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-widest hidden sm:inline">
+              Click any lead to expand outreach studio
+            </span>
+          </div>
 
-            {/* List Body */}
-            <div className="overflow-y-auto divide-y divide-white/[0.04] flex-1">
-              {loading ? (
-                <div className="py-20 text-center text-zinc-500 text-xs font-mono-accent">
-                  <div className="inline-block w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin mb-2"></div>
-                  <div>Loading workspace...</div>
-                </div>
-              ) : displayedLeads.length === 0 ? (
-                <div className="py-20 text-center text-zinc-500 text-xs font-mono-accent">
-                  No businesses found. Try a different search term or run a scrape.
-                </div>
-              ) : (
-                displayedLeads.map((lead) => {
-                  const isSelected = activeLead?.id === lead.id;
-                  const isChecked = selectedLeads.includes(lead.id);
-                  const isContacted = isLeadContacted(lead);
-                  const contactedInfo = getLeadContactedInfo(lead);
-                  const leadIntent = calculateLeadIntent(lead);
+          {/* Leads List */}
+          {loading ? (
+            <div className="py-24 text-center text-zinc-500 text-xs font-mono-accent bg-zinc-950/80 border border-zinc-800/80 rounded-3xl">
+              <div className="inline-block w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin mb-2"></div>
+              <div>Loading businesses...</div>
+            </div>
+          ) : displayedLeads.length === 0 ? (
+            <div className="py-24 text-center text-zinc-500 text-xs font-mono-accent bg-zinc-950/80 border border-zinc-800/80 rounded-3xl">
+              No businesses found matching filters.
+            </div>
+          ) : (
+            displayedLeads.map((lead) => {
+              const isExpanded = activeLeadId === lead.id;
+              const isChecked = selectedLeads.includes(lead.id);
+              const isContacted = isLeadContacted(lead);
+              const contactedInfo = getLeadContactedInfo(lead);
+              const leadIntent = calculateLeadIntent(lead);
 
-                  return (
-                    <div
-                      key={lead.id}
-                      onClick={() => setActiveLeadId(lead.id)}
-                      className={`p-3.5 transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                        isSelected
-                          ? 'bg-zinc-900/90 border-l-2 border-white'
-                          : 'hover:bg-zinc-900/40'
-                      }`}
-                    >
-                      {/* Checkbox & Lead Overview */}
-                      <div className="flex items-start gap-3 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleSelectLead(lead.id);
-                          }}
-                          className="mt-1 rounded bg-zinc-900 border-zinc-700 accent-white cursor-pointer"
-                        />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-white truncate group-hover:text-white">
-                              {lead.business_name}
+              return (
+                <div
+                  key={lead.id}
+                  className={`bg-zinc-950/80 border transition-all duration-200 rounded-2xl overflow-hidden backdrop-blur-2xl shadow-lg ${
+                    isExpanded
+                      ? 'border-zinc-600 shadow-[0_20px_50px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.08)]'
+                      : 'border-zinc-800/80 hover:border-zinc-700'
+                  }`}
+                >
+                  {/* Lead Summary Row (Clickable Accordion Header) */}
+                  <div
+                    onClick={() => toggleLeadExpand(lead.id)}
+                    className={`px-5 py-4 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                      isExpanded ? 'bg-zinc-900/60' : 'hover:bg-zinc-900/30'
+                    }`}
+                  >
+                    {/* Left details */}
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleSelectLead(lead.id);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded bg-zinc-900 border-zinc-700 accent-white cursor-pointer w-4 h-4 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className="font-semibold text-sm sm:text-base text-white truncate font-display">
+                            {lead.business_name}
+                          </span>
+
+                          {leadIntent.score >= 75 && (
+                            <span className="text-[10px] text-amber-400 font-mono-accent bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-800/40" title={`Website Intent: ${leadIntent.score}%`}>
+                              🔥 {leadIntent.score}% Intent
                             </span>
+                          )}
 
-                            {/* Intent Score Chip */}
-                            <span className={`inline-flex items-center gap-1 text-[9px] font-mono-accent font-bold px-2 py-0.5 rounded-full border ${
-                              leadIntent.score >= 85 
-                                ? 'bg-rose-950/50 text-rose-300 border-rose-800/50' 
-                                : leadIntent.score >= 70 
-                                ? 'bg-amber-950/50 text-amber-300 border-amber-800/50' 
-                                : 'bg-zinc-900 text-zinc-400 border-zinc-800'
-                            }`} title={`Website Buying Intent: ${leadIntent.score}% (${leadIntent.level})`}>
-                              <span>🔥</span>
-                              <span>{leadIntent.score}% Intent</span>
+                          {contactedInfo && (
+                            <span className="text-[10px] text-emerald-400 font-mono-accent bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                              ✓ {contactedInfo.channel === 'WhatsApp' ? 'WA Sent' : contactedInfo.channel} {contactedInfo.timeFormatted ? `· ${contactedInfo.timeFormatted}` : ''}
                             </span>
-                            
-                            {/* Sent Status Badge */}
-                            {contactedInfo ? (
-                              <span className={`inline-flex items-center gap-1 text-[10px] font-mono-accent font-bold px-2 py-0.5 rounded-full ${
-                                lead.status === 'WhatsApp Sent'
-                                  ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/30'
-                                  : lead.status === 'Emailed'
-                                  ? 'bg-sky-950/60 text-sky-400 border border-sky-500/30'
-                                  : 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/30'
-                              }`}>
-                                <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                                <span>✓ {contactedInfo.channel === 'WhatsApp' ? 'WA Sent' : contactedInfo.channel}</span>
-                                {contactedInfo.timeFormatted && (
-                                  <span className="opacity-70 font-normal">· {contactedInfo.timeFormatted}</span>
-                                )}
-                              </span>
-                            ) : null}
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs text-zinc-400 font-mono-accent mt-0.5">
+                          <span>{lead.category || 'Business'}</span>
+                          <span>·</span>
+                          <span>{lead.location}</span>
+                          {lead.phone_number && (
+                            <>
+                              <span>·</span>
+                              <span className="text-zinc-500">{lead.phone_number}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right side badges & actions */}
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      
+                      {/* Rating chip */}
+                      <div className="inline-flex items-center gap-1 font-mono-accent text-xs font-medium text-white bg-zinc-900/90 px-2.5 py-1 rounded-full border border-zinc-800">
+                        <span>{lead.rating ? Number(lead.rating).toFixed(1) : '5.0'}</span>
+                        <svg className="w-3 h-3 text-amber-400 fill-amber-400" viewBox="0 0 20 20">
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                      </div>
+
+                      {/* WhatsApp Status Badge */}
+                      {lead.phone_number ? (
+                        <span className="text-[11px] text-emerald-400 font-mono-accent font-medium bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-800/40">
+                          WA
+                        </span>
+                      ) : null}
+
+                      {/* 1-Click Status Toggle Checkmark */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleLeadContacted(lead, e)}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border ${
+                          isContacted
+                            ? 'text-emerald-400 bg-emerald-950/60 border-emerald-500/40'
+                            : 'text-zinc-600 hover:text-emerald-400 bg-zinc-900 border-zinc-800 hover:border-emerald-800'
+                        }`}
+                        title={isContacted ? "Contacted ✓ (Click to mark unsent)" : "Mark as Contacted"}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+
+                      {/* Delete Lead Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleDelete(lead.id, e)}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-600 hover:text-rose-400 bg-zinc-900 hover:bg-rose-950/40 border border-zinc-800 hover:border-rose-900/40 transition-colors cursor-pointer"
+                        title="Delete lead"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+
+                      {/* Accordion Chevron */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-zinc-900 border border-zinc-800 text-zinc-400 transition-transform duration-200 ${
+                        isExpanded ? 'rotate-180 text-white bg-zinc-800' : ''
+                      }`}>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* Inline Expanded Outreach Drawer */}
+                  {isExpanded && (
+                    <div className="p-6 border-t border-zinc-800/80 bg-zinc-950/90 animate-slide-down space-y-5">
+                      
+                      {/* Intelligence & Pitch Strategy Strip */}
+                      <div className="bg-zinc-900/60 border border-zinc-800/70 rounded-2xl p-4 font-mono-accent space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="text-zinc-500 uppercase text-[10px]">Phone:</span>
+                            <span className="text-white font-medium">{lead.phone_number || 'No phone'}</span>
                           </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-zinc-500 uppercase text-[10px]">Website Audit:</span>
+                            <span className="text-rose-400 font-medium">No Website Detected</span>
+                          </div>
+
+                          {lead.estimated_owner_name && lead.estimated_owner_name !== 'Unknown' && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-zinc-500 uppercase text-[10px]">Owner:</span>
+                              <span className="text-zinc-300 font-medium">{lead.estimated_owner_name}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => setEditingLead(lead)}
+                              className="px-3 py-1 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-mono-accent border border-zinc-800 transition-colors cursor-pointer"
+                            >
+                              Edit Details
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Pitch Strategy Hook */}
+                        <div className="pt-2 border-t border-zinc-800/60 flex items-start gap-2 text-xs">
+                          <span className="text-amber-400 shrink-0">💡</span>
+                          <p className="text-zinc-300 leading-relaxed font-sans text-xs">
+                            {leadIntent.pitchRecommendation}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Outreach Message Studio */}
+                      <div className="space-y-3">
+                        
+                        {/* Controls: Language, Tone, Regenerate */}
+                        <div className="flex flex-wrap items-center justify-between gap-2.5">
                           
-                          <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono-accent mt-0.5">
-                            <span>{lead.category || 'Business'}</span>
-                            <span>·</span>
-                            <span>{lead.location}</span>
-                            {leadIntent.signals[0] && (
+                          {/* Language Selector */}
+                          <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-full border border-zinc-800">
+                            {['German', 'Albanian', 'English'].map((lang) => (
+                              <button
+                                key={lang}
+                                type="button"
+                                onClick={() => setInspectorLanguage(lang)}
+                                className={`text-[11px] px-3.5 py-1 rounded-full transition-all cursor-pointer font-mono-accent ${
+                                  inspectorLanguage === lang
+                                    ? 'bg-zinc-800 text-white font-semibold shadow-sm'
+                                    : 'text-zinc-500 hover:text-zinc-300'
+                                }`}
+                              >
+                                {lang === 'German' ? '🇩🇪 DE' : lang === 'Albanian' ? '🇦🇱 SQ' : '🇬🇧 EN'}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Tone Dropdown */}
+                          <select
+                            value={inspectorTone}
+                            onChange={(e) => setInspectorTone(e.target.value)}
+                            className="text-xs bg-zinc-900 border border-zinc-800 rounded-full px-3.5 py-1.5 text-zinc-300 focus:outline-none focus:border-zinc-500 cursor-pointer font-mono-accent"
+                          >
+                            <option value="Professional & Friendly">Professional & Friendly</option>
+                            <option value="Free Website Mockup / Preview">Free Website Mockup</option>
+                            <option value="Leverage High Google Reviews">Leverage 4.5+ Rating</option>
+                            <option value="Short & Punchy Direct Pitch">Direct & Punchy</option>
+                          </select>
+
+                          {/* Regenerate AI Button */}
+                          <button
+                            type="button"
+                            onClick={handleInlineGenerateAI}
+                            disabled={inspectorGenerating}
+                            className="text-xs font-mono-accent text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 border border-zinc-800 rounded-full px-4 py-1.5 flex items-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            {inspectorGenerating ? (
                               <>
-                                <span>·</span>
-                                <span className="text-zinc-400 hidden sm:inline">{leadIntent.signals[0].icon} {leadIntent.signals[0].title}</span>
+                                <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                </svg>
+                                <span>Generating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>✨</span>
+                                <span>Regenerate Pitch</span>
                               </>
                             )}
+                          </button>
+                        </div>
+
+                        {/* Textarea */}
+                        <textarea
+                          value={inspectorMessage}
+                          onChange={(e) => setInspectorMessage(e.target.value)}
+                          rows={6}
+                          className="w-full p-4 text-xs bg-zinc-950 border border-zinc-800 rounded-2xl focus:outline-none focus:border-zinc-500 font-sans leading-relaxed text-zinc-200 resize-none shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]"
+                          placeholder="Type or generate message..."
+                        ></textarea>
+
+                        {/* Footer Action Ribbon */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                          
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleInlineCopy}
+                              className="text-xs font-mono-accent text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full px-4 py-2 transition-colors cursor-pointer"
+                            >
+                              {inspectorCopied ? '✓ Copied' : 'Copy'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleInlineSaveDraft}
+                              className="text-xs font-mono-accent text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full px-4 py-2 transition-colors cursor-pointer"
+                            >
+                              {inspectorSaved ? '✓ Saved' : 'Save Draft'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openWhatsAppModal(lead)}
+                              className="text-xs font-mono-accent text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full px-4 py-2 transition-colors cursor-pointer"
+                            >
+                              Expanded View
+                            </button>
                           </div>
+
+                          {/* Primary Hero Send Button */}
+                          <button
+                            type="button"
+                            onClick={handleInlineSendWhatsApp}
+                            disabled={!lead.phone_number}
+                            className={`h-9 px-6 text-xs font-semibold rounded-full flex items-center gap-2 transition-all cursor-pointer font-mono-accent uppercase tracking-wider ${
+                              isLeadContacted(lead)
+                                ? 'text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 shadow-[0_0_15px_rgba(52,211,153,0.2)]'
+                                : 'text-black bg-emerald-400 hover:bg-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.3)] hover:shadow-[0_0_25px_rgba(52,211,153,0.5)]'
+                            }`}
+                          >
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                            </svg>
+                            <span>{isLeadContacted(lead) ? 'Re-send WhatsApp' : 'Send WhatsApp'}</span>
+                          </button>
+
                         </div>
-                      </div>
-
-                      {/* Right Badges & Actions: Rating, Phone, Toggle & Delete */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        
-                        {/* Rating chip */}
-                        <div className="inline-flex items-center gap-1 font-mono-accent text-xs font-medium text-white bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
-                          <span>{lead.rating ? Number(lead.rating).toFixed(1) : '—'}</span>
-                          <svg className="w-2.5 h-2.5 text-amber-400 fill-amber-400" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                          </svg>
-                        </div>
-
-                        {/* Phone indicator badge */}
-                        {lead.phone_number ? (
-                          <span className="text-[11px] text-emerald-400 font-mono-accent bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-800/40">
-                            WA
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-zinc-600 font-mono-accent">No Phone</span>
-                        )}
-
-                        {/* 1-Click Quick Toggle Contacted Status */}
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleLeadContacted(lead, e)}
-                          className={`p-1 rounded-lg border transition-all cursor-pointer ${
-                            isContacted
-                              ? 'text-emerald-400 bg-emerald-950/50 border-emerald-800/50 hover:bg-emerald-900/60'
-                              : 'text-zinc-600 hover:text-emerald-400 hover:bg-emerald-950/30 border-transparent hover:border-emerald-800/30'
-                          }`}
-                          title={isContacted ? "Contacted ✓ (Click to mark as unsent)" : "Click to mark as Contacted / Sent"}
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </button>
-
-                        {/* Direct Delete Row Button */}
-                        <button
-                          type="button"
-                          onClick={(e) => handleDelete(lead.id, e)}
-                          className="p-1 rounded-lg text-zinc-600 hover:text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/40 transition-colors cursor-pointer"
-                          title="Delete lead"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
 
                       </div>
+
                     </div>
-                  );
-                })
-              )}
-            </div>
-
-          </div>
-
-          {/* Right Column: Instant Inline Lead Inspector & 1-Click Outreach Suite */}
-          <div className="lg:col-span-6 bg-zinc-950/70 border border-white/[0.08] rounded-2xl p-5 shadow-2xl backdrop-blur-xl flex flex-col justify-between max-h-[720px] overflow-y-auto">
-            {activeLead ? (
-              <div className="space-y-4">
-                
-                {/* Header of Inspector & Quick Navigation */}
-                <div className="flex items-start justify-between border-b border-white/[0.06] pb-3.5">
-                  <div className="min-w-0 pr-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base sm:text-lg font-bold text-white font-display truncate">
-                        {activeLead.business_name}
-                      </h2>
-                      <span className={`text-[10px] font-mono-accent font-semibold uppercase px-2.5 py-0.5 rounded-full shrink-0 ${
-                        activeLead.status === 'WhatsApp Sent'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : activeLead.status === 'Emailed'
-                          ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                          : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                      }`}>
-                        {activeLead.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-400 font-mono-accent mt-0.5">
-                      {activeLead.category || 'Local Business'} · {activeLead.location} · <span className="text-amber-400 font-bold">{activeLead.rating ? Number(activeLead.rating).toFixed(1) : '5.0'}★</span> ({activeLead.reviews_count || 0})
-                    </p>
-                  </div>
-
-                  {/* Action Controls: Edit, Delete, Navigation Arrows */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setEditingLead(activeLead)}
-                      className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-mono-accent border border-zinc-800 transition-colors cursor-pointer flex items-center gap-1"
-                      title="Edit Lead Details"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                      <span className="hidden sm:inline">Edit</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => handleDelete(activeLead.id, e)}
-                      className="px-2.5 py-1 rounded-lg bg-rose-950/20 hover:bg-rose-950/50 text-rose-400 hover:text-rose-300 text-xs font-mono-accent border border-rose-900/30 hover:border-rose-800/60 transition-colors cursor-pointer flex items-center gap-1"
-                      title="Delete Lead"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                      <span className="hidden sm:inline">Delete</span>
-                    </button>
-
-                    <div className="h-4 w-px bg-zinc-800 mx-0.5"></div>
-
-                    <button
-                      onClick={handlePrevLead}
-                      disabled={currentLeadIndex <= 0}
-                      className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 text-zinc-300 text-xs font-mono-accent border border-zinc-800 cursor-pointer"
-                      title="Previous Lead"
-                    >
-                      ◀
-                    </button>
-                    <button
-                      onClick={handleNextLeadNav}
-                      disabled={currentLeadIndex >= displayedLeads.length - 1}
-                      className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 text-zinc-300 text-xs font-mono-accent border border-zinc-800 cursor-pointer"
-                      title="Next Lead"
-                    >
-                      ▶
-                    </button>
-                  </div>
-                </div>
-
-                {/* Prominent Contacted Notification Banner */}
-                {isLeadContacted(activeLead) ? (
-                  <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-3 flex items-center justify-between gap-3 text-xs font-mono-accent">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 font-bold shrink-0">
-                        ✓
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-emerald-300 font-bold flex items-center gap-2 flex-wrap">
-                          <span>MESSAGE ALREADY SENT</span>
-                          <span className="text-[10px] text-emerald-400 bg-emerald-900/50 px-2 py-0.5 rounded-full border border-emerald-700/50">
-                            via {getLeadContactedInfo(activeLead)?.channel || 'Direct'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-emerald-400/80 mt-0.5">
-                          {getLeadContactedInfo(activeLead)?.timeFormatted 
-                            ? `Contacted ${getLeadContactedInfo(activeLead).timeFormatted}. You can review below or send a follow-up.`
-                            : 'This business was marked as contacted.'}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => handleToggleLeadContacted(activeLead, e)}
-                      className="text-[10px] font-semibold text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer shrink-0"
-                    >
-                      Mark Unsent
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-zinc-900/40 border border-white/[0.04] rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-xs font-mono-accent text-zinc-400">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                      <span>Outreach Status: <strong className="text-zinc-200 font-semibold">Not Sent Yet</strong></span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => handleToggleLeadContacted(activeLead, e)}
-                      className="text-[10px] text-emerald-400 hover:text-emerald-300 bg-emerald-950/30 hover:bg-emerald-900/40 border border-emerald-800/40 rounded-lg px-2.5 py-1 transition-colors cursor-pointer"
-                    >
-                      ✓ Mark as Sent
-                    </button>
-                  </div>
-                )}
-
-                {/* Inline Telemetry Chips */}
-                <div className="grid grid-cols-3 gap-2 text-xs font-mono-accent">
-                  <div className="p-2 rounded-xl bg-zinc-900/60 border border-white/[0.04]">
-                    <span className="text-[9px] text-zinc-500 uppercase block">Phone Contact</span>
-                    <span className="text-white font-medium truncate block mt-0.5">
-                      {activeLead.phone_number || 'No phone'}
-                    </span>
-                  </div>
-
-                  <div className="p-2 rounded-xl bg-zinc-900/60 border border-white/[0.04]">
-                    <span className="text-[9px] text-zinc-500 uppercase block">Website Audit</span>
-                    <span className="text-red-400 font-semibold text-[11px] block mt-0.5">
-                      No Website
-                    </span>
-                  </div>
-
-                  <div className="p-2 rounded-xl bg-zinc-900/60 border border-white/[0.04]">
-                    <span className="text-[9px] text-zinc-500 uppercase block">Owner Estimate</span>
-                    <span className="text-zinc-300 font-medium truncate block mt-0.5">
-                      {activeLead.estimated_owner_name && activeLead.estimated_owner_name !== 'Unknown' 
-                        ? activeLead.estimated_owner_name 
-                        : 'Local Owner'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Buying Signals & Website Intent Radar Widget */}
-                {(() => {
-                  const intent = calculateLeadIntent(activeLead);
-                  return (
-                    <div className="bg-zinc-900/70 border border-white/[0.08] rounded-xl p-3.5 space-y-3 font-mono-accent">
-                      {/* Header with Gauge */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm">🎯</span>
-                          <span className="text-xs font-bold text-white uppercase tracking-wider">Website Intent Radar</span>
-                        </div>
-                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${intent.color}`}>
-                          🔥 {intent.score}% — {intent.level}
-                        </span>
-                      </div>
-
-                      {/* Intent Meter Bar */}
-                      <div className="w-full bg-zinc-950 rounded-full h-1.5 overflow-hidden border border-zinc-800">
-                        <div 
-                          className="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-emerald-400 transition-all duration-500 rounded-full"
-                          style={{ width: `${intent.score}%` }}
-                        ></div>
-                      </div>
-
-                      {/* Signals Breakdown */}
-                      <div className="space-y-1.5 pt-1">
-                        {intent.signals.map((sig, idx) => (
-                          <div key={idx} className="flex items-start gap-2 text-[11px] bg-zinc-950/60 border border-white/[0.03] p-2 rounded-lg">
-                            <span className="text-xs shrink-0">{sig.icon}</span>
-                            <div className="min-w-0">
-                              <span className="font-semibold text-zinc-200 block">{sig.title}</span>
-                              <span className="text-[10px] text-zinc-400 leading-snug block mt-0.5">{sig.desc}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Recommended Pitch Hook */}
-                      <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5 text-[11px] flex items-start gap-2">
-                        <span className="text-emerald-400 shrink-0 mt-0.5">💡</span>
-                        <div className="min-w-0">
-                          <span className="font-bold text-emerald-400 uppercase text-[9px] block tracking-wider">Recommended Pitch Strategy</span>
-                          <span className="text-zinc-300 text-[11px] leading-relaxed block mt-0.5">{intent.pitchRecommendation}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Instant Inline AI Controls Bar */}
-                <div className="bg-zinc-900/60 border border-white/[0.06] rounded-xl p-3 space-y-2.5 font-mono-accent">
-                  
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    {/* Language Switch Pills */}
-                    <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
-                      {['German', 'Albanian', 'English'].map((lang) => (
-                        <button
-                          key={lang}
-                          type="button"
-                          onClick={() => setInspectorLanguage(lang)}
-                          className={`text-[10px] px-2 py-0.5 rounded transition-all cursor-pointer ${
-                            inspectorLanguage === lang
-                              ? 'bg-zinc-800 text-white font-bold'
-                              : 'text-zinc-500 hover:text-zinc-300'
-                          }`}
-                        >
-                          {lang === 'German' ? '🇩🇪 DE' : lang === 'Albanian' ? '🇦🇱 SQ' : '🇬🇧 EN'}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Angle / Tone Selector */}
-                    <select
-                      value={inspectorTone}
-                      onChange={(e) => setInspectorTone(e.target.value)}
-                      className="text-[11px] bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-zinc-300 focus:outline-none focus:border-zinc-500 cursor-pointer"
-                    >
-                      <option value="Professional & Friendly">Professional & Friendly</option>
-                      <option value="Free Website Mockup / Preview">Free Website Mockup</option>
-                      <option value="Leverage High Google Reviews">Leverage 4.5+ Rating</option>
-                      <option value="Short & Punchy Direct Pitch">Direct & Punchy</option>
-                    </select>
-
-                    {/* Instant 1-Click Regenerate */}
-                    <button
-                      type="button"
-                      onClick={handleInlineGenerateAI}
-                      disabled={inspectorGenerating}
-                      className="text-[11px] font-semibold text-white bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 border border-white/10 rounded-lg px-2.5 py-1 flex items-center gap-1.5 cursor-pointer"
-                    >
-                      {inspectorGenerating ? (
-                        <>
-                          <svg className="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                          </svg>
-                          <span>AI Drafting...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>✨</span>
-                          <span>Regenerate</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Live Editable WhatsApp Message Body */}
-                  <textarea
-                    value={inspectorMessage}
-                    onChange={(e) => setInspectorMessage(e.target.value)}
-                    rows={7}
-                    className="w-full p-3 text-xs bg-zinc-950 border border-zinc-800 rounded-xl focus:outline-none focus:border-zinc-500 font-sans leading-relaxed text-zinc-200 resize-none shadow-inner"
-                    placeholder="Type or generate message..."
-                  ></textarea>
-
-                  {/* Footer Action Ribbon */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                    
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={handleInlineCopy}
-                        className="text-[11px] text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer"
-                      >
-                        {inspectorCopied ? '✓ Copied' : '📋 Copy'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleInlineSaveDraft}
-                        className="text-[11px] text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer"
-                      >
-                        {inspectorSaved ? '✓ Saved' : '💾 Save'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => openWhatsAppModal(activeLead)}
-                        className="text-[11px] text-purple-400 hover:text-purple-300 bg-purple-950/30 hover:bg-purple-900/40 border border-purple-800/40 rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer"
-                      >
-                        Expanded View
-                      </button>
-                    </div>
-
-                    {/* Primary Direct 1-Click Launch Button */}
-                    <button
-                      type="button"
-                      onClick={handleInlineSendWhatsApp}
-                      disabled={!activeLead.phone_number}
-                      className={`text-xs font-semibold rounded-xl px-4 py-1.5 flex items-center gap-1.5 transition-all cursor-pointer uppercase tracking-wider ${
-                        isLeadContacted(activeLead)
-                          ? 'text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 shadow-[0_0_15px_rgba(52,211,153,0.2)]'
-                          : 'text-black bg-emerald-400 hover:bg-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.3)]'
-                      }`}
-                    >
-                      <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
-                      </svg>
-                      <span>{isLeadContacted(activeLead) ? 'Re-send WhatsApp' : 'Send WhatsApp'}</span>
-                    </button>
-
-                  </div>
+                  )}
 
                 </div>
-
-              </div>
-            ) : (
-              <div className="py-24 text-center text-zinc-500 text-xs font-mono-accent">
-                Select a business to start outreach.
-              </div>
-            )}
-          </div>
+              );
+            })
+          )}
 
         </div>
 
@@ -1362,8 +1192,8 @@ const Dashboard = () => {
 
         {/* Lead Editing Modal */}
         {editingLead && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
-            <div className="bg-zinc-950 border border-white/10 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden animate-slide-down max-h-[90vh] flex flex-col">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden animate-slide-down max-h-[90vh] flex flex-col">
               <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
                 <h3 className="font-bold text-base text-white font-mono-accent uppercase tracking-wider">
                   Edit Lead Details
@@ -1423,7 +1253,7 @@ const Dashboard = () => {
                     onChange={(e) => setEditingLead({ ...editingLead, personalized_whatsapp: e.target.value })}
                     rows="4"
                     className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl focus:outline-none focus:border-zinc-500 text-white text-sm"
-                    placeholder="Hallo, ich bin Art Halimi, ich mache Webseiten..."
+                    placeholder="Hallo, ich bin Art Halimi..."
                   ></textarea>
                 </div>
 
@@ -1445,7 +1275,7 @@ const Dashboard = () => {
                       setEditingLead(null);
                       handleDelete(id);
                     }}
-                    className="text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-950/60 border border-rose-900/40 rounded-xl px-4 py-2 transition-colors cursor-pointer flex items-center gap-1.5"
+                    className="text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-950/60 border border-rose-900/40 rounded-full px-4 py-2 transition-colors cursor-pointer flex items-center gap-1.5"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1457,13 +1287,13 @@ const Dashboard = () => {
                     <button
                       type="button"
                       onClick={() => setEditingLead(null)}
-                      className="text-xs font-semibold text-zinc-400 hover:text-white border border-zinc-800 rounded-xl px-4 py-2 hover:bg-zinc-900 cursor-pointer"
+                      className="text-xs font-semibold text-zinc-400 hover:text-white border border-zinc-800 rounded-full px-4 py-2 hover:bg-zinc-900 cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="text-xs font-semibold text-black bg-white hover:bg-zinc-200 rounded-xl px-5 py-2 shadow-md cursor-pointer uppercase tracking-wider"
+                      className="text-xs font-semibold text-black bg-white hover:bg-zinc-200 rounded-full px-5 py-2 shadow-md cursor-pointer uppercase tracking-wider"
                     >
                       Save Changes
                     </button>
