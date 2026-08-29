@@ -302,9 +302,33 @@ export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, log
         const categoryNode = document.querySelector('button[jsaction*="category"]');
         const category = categoryNode ? categoryNode.innerText.trim() : '';
 
-        // Website: check button with data-item-id="authority"
+        // Comprehensive Website Detection (Guarantees zero website)
+        let website = null;
         const websiteBtn = document.querySelector('a[data-item-id="authority"]');
-        const website = websiteBtn ? websiteBtn.href : null;
+        if (websiteBtn && websiteBtn.href && !websiteBtn.href.includes('google.com/maps')) {
+          website = websiteBtn.href;
+        }
+
+        // Secondary check: look for any button/link with website/webseite aria-label or tooltip
+        if (!website) {
+          const altWebsiteAnchor = document.querySelector('a[aria-label*="website" i], a[aria-label*="webseite" i], a[data-tooltip*="website" i], a[data-tooltip*="webseite" i]');
+          if (altWebsiteAnchor && altWebsiteAnchor.href && !altWebsiteAnchor.href.includes('google.com/maps')) {
+            website = altWebsiteAnchor.href;
+          }
+        }
+
+        // Tertiary check: check for globe icon link in info section
+        if (!website) {
+          const allLinks = Array.from(document.querySelectorAll('div[role="region"] a[href^="http"], div.m6QErb a[href^="http"]'));
+          for (const link of allLinks) {
+            const href = link.href.toLowerCase();
+            if (!href.includes('google.com') && !href.includes('goo.gl') && !href.includes('gstatic.com') && !href.includes('ggpht.com')) {
+              // Found an external company website
+              website = link.href;
+              break;
+            }
+          }
+        }
 
         return { name, rating, reviews, phone, address, category, website };
       });
@@ -318,7 +342,7 @@ export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, log
 
       // Filter out businesses with website, or with low rating
       if (details.website) {
-        log(`Skipping: "${details.name}" has an active website: ${details.website}`);
+        log(`[FILTER] Discarded: "${details.name}" has an active website (${details.website})`);
         continue;
       }
 

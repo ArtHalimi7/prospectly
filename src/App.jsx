@@ -10,7 +10,7 @@ import Settings from './pages/Settings';
 const App = () => {
   
   return (
-    <main className='bg-white min-h-screen text-black'>
+    <main className='bg-[#050507] min-h-screen text-white selection:bg-white/20 selection:text-white font-sans antialiased'>
       <Router>
         <Navbar />
         <Routes>

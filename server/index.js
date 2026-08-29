@@ -121,12 +121,21 @@ function executeJSONQuery(query, params = []) {
     const updatedLeads = leads.map(l => {
       if (String(l.id) === String(targetId)) {
         updated = true;
-        if (normalized.includes('status = ?') && params.length === 2) {
-          return { ...l, status: params[0], updated_at: new Date().toISOString() };
+        if (normalized.includes('status = ?') && params.length >= 2) {
+          const newStatus = params[0];
+          const isSent = newStatus === 'WhatsApp Sent' || newStatus === 'Emailed' || newStatus === 'Sent';
+          return {
+            ...l,
+            status: newStatus,
+            last_contacted_at: isSent ? (l.last_contacted_at || new Date().toISOString()) : null,
+            updated_at: new Date().toISOString()
+          };
         }
         if (normalized.includes('personalized_whatsapp = ?') && params.length === 2) {
           return { ...l, personalized_whatsapp: params[0], updated_at: new Date().toISOString() };
         }
+        const newStatus = params[5] !== undefined ? params[5] : l.status;
+        const isSent = newStatus === 'WhatsApp Sent' || newStatus === 'Emailed' || newStatus === 'Sent';
         return {
           ...l,
           business_name: params[0] !== undefined ? params[0] : l.business_name,
@@ -134,10 +143,11 @@ function executeJSONQuery(query, params = []) {
           primary_contact_email: params[2] !== undefined ? params[2] : l.primary_contact_email,
           primary_social_pitch_url: params[3] !== undefined ? params[3] : l.primary_social_pitch_url,
           quick_pitch_hook: params[4] !== undefined ? params[4] : l.quick_pitch_hook,
-          status: params[5] !== undefined ? params[5] : l.status,
+          status: newStatus,
           personalized_subject: params[6] !== undefined ? params[6] : (l.personalized_subject || ''),
           personalized_body: params[7] !== undefined ? params[7] : (l.personalized_body || ''),
           personalized_whatsapp: params[8] !== undefined ? params[8] : (l.personalized_whatsapp || ''),
+          last_contacted_at: isSent ? (l.last_contacted_at || new Date().toISOString()) : null,
           updated_at: new Date().toISOString()
         };
       }
@@ -155,6 +165,14 @@ function executeJSONQuery(query, params = []) {
     const filtered = leads.filter(l => String(l.id) !== String(params[0]));
     writeJSONFile(LEADS_FILE, filtered);
     return { affectedRows: 1 };
+  }
+
+  if (normalized.includes('DELETE FROM leads WHERE id IN')) {
+    const leads = readJSONFile(LEADS_FILE);
+    const idList = (Array.isArray(params[0]) ? params[0] : params).map(String);
+    const filtered = leads.filter(l => !idList.includes(String(l.id)));
+    writeJSONFile(LEADS_FILE, filtered);
+    return { affectedRows: leads.length - filtered.length };
   }
 
   // 2. TEMPLATES QUERIES
@@ -447,9 +465,38 @@ app.post('/api/generate-whatsapp', async (req, res) => {
 // Endpoint to mark lead as WhatsApp Sent
 app.post('/api/leads/:id/whatsapp-sent', async (req, res) => {
   const { id } = req.params;
+  const now = new Date().toISOString();
   try {
-    await executeQuery('UPDATE leads SET status = ? WHERE id = ?', ['WhatsApp Sent', id]);
-    res.json({ success: true, status: 'WhatsApp Sent' });
+    try {
+      const db = await connectDB();
+      await db.query('UPDATE leads SET status = ?, last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?', ['WhatsApp Sent', id]);
+    } catch (dbErr) {
+      await executeQuery('UPDATE leads SET status = ? WHERE id = ?', ['WhatsApp Sent', id]);
+    }
+    res.json({ success: true, status: 'WhatsApp Sent', last_contacted_at: now });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint to toggle or set lead status (e.g. 'WhatsApp Sent', 'Emailed', 'Contacted', 'Enriched', 'Scraped')
+app.post('/api/leads/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const isSent = status === 'WhatsApp Sent' || status === 'Emailed' || status === 'Sent' || status === 'Contacted';
+  const now = isSent ? new Date().toISOString() : null;
+  try {
+    try {
+      const db = await connectDB();
+      if (isSent) {
+        await db.query('UPDATE leads SET status = ?, last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?', [status, id]);
+      } else {
+        await db.query('UPDATE leads SET status = ?, last_contacted_at = NULL WHERE id = ?', [status, id]);
+      }
+    } catch (dbErr) {
+      await executeQuery('UPDATE leads SET status = ? WHERE id = ?', [status, id]);
+    }
+    res.json({ success: true, status, last_contacted_at: now });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -459,6 +506,19 @@ app.delete('/api/leads/:id', async (req, res) => {
   try {
     await executeQuery('DELETE FROM leads WHERE id = ?', [req.params.id]);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/batch-delete', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'No lead IDs provided for deletion.' });
+    }
+    await executeQuery('DELETE FROM leads WHERE id IN (?)', [ids]);
+    res.json({ success: true, count: ids.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

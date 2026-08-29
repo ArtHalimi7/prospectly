@@ -1,8 +1,22 @@
-# React + Vite
+# ClientScrapper
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Autonomous B2B lead generation, OSINT enrichment, and cold outreach suite for web developers.
 
-Currently, two official plugins are available:
+Scrapes Google Maps for local businesses that have high ratings and reviews but **NO active website**, calculates their **Website Buying Intent Score**, drafts human-written pitches via **Gemini 2.5 Flash**, and sends outreach via **1-Click WhatsApp** or **Nodemailer Email Campaigns**.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🚀 Quick Start
+
+```bash
+# 1. Install dependencies
+npm install
+cd server && npm install && cd ..
+
+# 2. Configure server/.env (optional for Gemini AI & SMTP)
+# If no MySQL DB is configured, local JSON fallback storage is used automatically.
+
+# 3. Start Backend & Frontend
+npm run server   # Express backend on http://localhost:5000
+npm run dev      # Vite frontend on http://localhost:5173
+```
+
+For complete architecture documentation, API endpoints reference, and development guides, see [`project_guide.md`](file:///c:/Projects/ClientScrapper/project_guide.md).

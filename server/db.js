@@ -65,17 +65,19 @@ async function initTables(db) {
       personalized_subject TEXT NULL,
       personalized_body TEXT NULL,
       personalized_whatsapp TEXT NULL,
+      last_contacted_at TIMESTAMP NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     );
   `);
 
-  // Safely add personalized_whatsapp column if table already existed
+  // Safely add personalized_whatsapp and last_contacted_at columns if table already existed
   try {
     await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS personalized_whatsapp TEXT NULL;`);
-  } catch (e) {
-    // Ignore if column already exists or syntax not supported
-  }
+  } catch (e) {}
+  try {
+    await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_contacted_at TIMESTAMP NULL;`);
+  } catch (e) {}
 
   // Templates table
   await db.query(`
