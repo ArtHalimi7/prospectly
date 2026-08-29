@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { connectDB } from './db.js';
 import { scrapeGoogleMaps, scrapeSearchSnippets } from './scraper.js';
-import { enrichLeadDetails } from './enricher.js';
+import { enrichLeadDetails, generateCustomWhatsApp } from './enricher.js';
 import { sendEmail } from './mailer.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -104,6 +104,7 @@ function executeJSONQuery(query, params = []) {
       quick_pitch_hook: params[11] || '',
       personalized_subject: params[12] || '',
       personalized_body: params[13] || '',
+      personalized_whatsapp: params[14] || '',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -114,24 +115,29 @@ function executeJSONQuery(query, params = []) {
 
   if (normalized.includes('UPDATE leads SET')) {
     const leads = readJSONFile(LEADS_FILE);
-    // UPDATE leads SET business_name = ?, estimated_owner_name = ?, primary_contact_email = ?, primary_social_pitch_url = ?, quick_pitch_hook = ?, status = ?, personalized_subject = ?, personalized_body = ? WHERE id = ?
-    const idIndex = params.length - 1;
-    const targetId = params[idIndex];
+    const targetId = params[params.length - 1];
     
     let updated = false;
     const updatedLeads = leads.map(l => {
       if (String(l.id) === String(targetId)) {
         updated = true;
+        if (normalized.includes('status = ?') && params.length === 2) {
+          return { ...l, status: params[0], updated_at: new Date().toISOString() };
+        }
+        if (normalized.includes('personalized_whatsapp = ?') && params.length === 2) {
+          return { ...l, personalized_whatsapp: params[0], updated_at: new Date().toISOString() };
+        }
         return {
           ...l,
-          business_name: params[0],
-          estimated_owner_name: params[1],
-          primary_contact_email: params[2],
-          primary_social_pitch_url: params[3],
-          quick_pitch_hook: params[4],
-          status: params[5],
-          personalized_subject: params[6] || '',
-          personalized_body: params[7] || '',
+          business_name: params[0] !== undefined ? params[0] : l.business_name,
+          estimated_owner_name: params[1] !== undefined ? params[1] : l.estimated_owner_name,
+          primary_contact_email: params[2] !== undefined ? params[2] : l.primary_contact_email,
+          primary_social_pitch_url: params[3] !== undefined ? params[3] : l.primary_social_pitch_url,
+          quick_pitch_hook: params[4] !== undefined ? params[4] : l.quick_pitch_hook,
+          status: params[5] !== undefined ? params[5] : l.status,
+          personalized_subject: params[6] !== undefined ? params[6] : (l.personalized_subject || ''),
+          personalized_body: params[7] !== undefined ? params[7] : (l.personalized_body || ''),
+          personalized_whatsapp: params[8] !== undefined ? params[8] : (l.personalized_whatsapp || ''),
           updated_at: new Date().toISOString()
         };
       }
@@ -322,7 +328,17 @@ app.get('/api/leads', async (req, res) => {
 
 app.put('/api/leads/:id', async (req, res) => {
   const { id } = req.params;
-  const { business_name, estimated_owner_name, primary_contact_email, primary_social_pitch_url, quick_pitch_hook, status, personalized_subject, personalized_body } = req.body;
+  const {
+    business_name,
+    estimated_owner_name,
+    primary_contact_email,
+    primary_social_pitch_url,
+    quick_pitch_hook,
+    status,
+    personalized_subject,
+    personalized_body,
+    personalized_whatsapp
+  } = req.body;
   try {
     await executeQuery(
       `UPDATE leads SET 
@@ -333,7 +349,8 @@ app.put('/api/leads/:id', async (req, res) => {
         quick_pitch_hook = ?,
         status = ?,
         personalized_subject = ?,
-        personalized_body = ?
+        personalized_body = ?,
+        personalized_whatsapp = ?
        WHERE id = ?`,
       [
         business_name,
@@ -344,10 +361,95 @@ app.put('/api/leads/:id', async (req, res) => {
         status || 'Enriched',
         personalized_subject || '',
         personalized_body || '',
+        personalized_whatsapp || '',
         id
       ]
     );
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint to generate/regenerate custom WhatsApp message for a specific lead
+app.post('/api/leads/:id/generate-whatsapp', async (req, res) => {
+  const { id } = req.params;
+  const { language, tone, customInstructions } = req.body || {};
+  try {
+    const leads = await executeQuery('SELECT * FROM leads WHERE id = ?', [id]);
+    const lead = Array.isArray(leads) && leads.length > 0 ? leads[0] : null;
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    const message = await generateCustomWhatsApp({
+      business_name: lead.business_name,
+      category: lead.category,
+      location: lead.location,
+      phone_number: lead.phone_number,
+      rating: lead.rating,
+      reviews_count: lead.reviews_count,
+      estimated_owner_name: lead.estimated_owner_name,
+      language: language || null,
+      tone: tone || 'Professional & Friendly',
+      customInstructions: customInstructions || ''
+    });
+
+    // Save generated message back to lead record
+    await executeQuery(
+      'UPDATE leads SET personalized_whatsapp = ? WHERE id = ?',
+      [message, id]
+    );
+
+    res.json({ success: true, message, personalized_whatsapp: message });
+  } catch (err) {
+    console.error(`[API] generate-whatsapp error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Direct on-demand WhatsApp message generator endpoint
+app.post('/api/generate-whatsapp', async (req, res) => {
+  try {
+    const {
+      business_name,
+      category,
+      location,
+      phone_number,
+      rating,
+      reviews_count,
+      estimated_owner_name,
+      language,
+      tone,
+      customInstructions
+    } = req.body;
+
+    const message = await generateCustomWhatsApp({
+      business_name: business_name || 'Local Business',
+      category: category || 'Business',
+      location: location || '',
+      phone_number: phone_number || '',
+      rating: rating || 5.0,
+      reviews_count: reviews_count || 0,
+      estimated_owner_name: estimated_owner_name || '',
+      language: language || null,
+      tone: tone || 'Professional & Friendly',
+      customInstructions: customInstructions || ''
+    });
+
+    res.json({ success: true, message });
+  } catch (err) {
+    console.error(`[API] generate-whatsapp error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint to mark lead as WhatsApp Sent
+app.post('/api/leads/:id/whatsapp-sent', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await executeQuery('UPDATE leads SET status = ? WHERE id = ?', ['WhatsApp Sent', id]);
+    res.json({ success: true, status: 'WhatsApp Sent' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -458,6 +560,137 @@ app.post('/api/campaigns', async (req, res) => {
 // -------------------------------------------------------------
 // Scraper Live Trigger Endpoint (Chunked Response Streaming)
 // -------------------------------------------------------------
+
+/**
+ * Smart Retry Query Generator
+ * When a broad search yields 0 website-less leads, generates localized
+ * city-specific search terms in the local language for better results.
+ * Small local businesses in specific cities are far more likely to lack websites.
+ */
+function generateRetryQueries(originalQuery) {
+  const q = originalQuery.toLowerCase();
+  const retryQueries = [];
+
+  // Mapping of countries/regions to their major cities and local language business terms
+  const regionMap = {
+    switzerland: {
+      cities: ['Zürich', 'Bern', 'Basel', 'Luzern', 'St. Gallen', 'Winterthur', 'Thun', 'Aarau', 'Schaffhausen', 'Solothurn'],
+      localTerms: {
+        'auto': ['Autohandel', 'Occasion Autos', 'Autogarage', 'Gebrauchtwagen'],
+        'car': ['Autohandel', 'Occasion Autos', 'Autogarage', 'Gebrauchtwagen'],
+        'dealership': ['Autohandel', 'Occasion Autos', 'Autogarage'],
+        'restaurant': ['Restaurant', 'Gasthaus', 'Beiz'],
+        'plumber': ['Sanitär', 'Installateur'],
+        'barber': ['Coiffeur', 'Friseur', 'Barbershop'],
+        'hairdresser': ['Coiffeur', 'Friseur'],
+        'bakery': ['Bäckerei', 'Konditorei'],
+        'electrician': ['Elektriker', 'Elektro'],
+        'painter': ['Maler', 'Malergeschäft'],
+        'carpenter': ['Schreiner', 'Schreinerei'],
+        'cleaning': ['Reinigung', 'Putzfirma'],
+        'tailor': ['Schneiderei', 'Änderungsschneiderei'],
+        'mechanic': ['Autogarage', 'Autowerkstatt', 'Mechaniker'],
+        'garage': ['Autogarage', 'Autowerkstatt'],
+        'default': ['Geschäft', 'Dienstleistung']
+      }
+    },
+    germany: {
+      cities: ['Hamburg', 'München', 'Berlin', 'Köln', 'Frankfurt', 'Stuttgart', 'Düsseldorf', 'Dortmund', 'Essen', 'Bremen', 'Dresden', 'Leipzig', 'Nürnberg'],
+      localTerms: {
+        'auto': ['Autohandel', 'Autohändler', 'Gebrauchtwagen', 'Autohaus'],
+        'car': ['Autohandel', 'Autohändler', 'Gebrauchtwagen'],
+        'dealership': ['Autohandel', 'Autohändler', 'Autohaus'],
+        'restaurant': ['Restaurant', 'Gasthaus', 'Gaststätte', 'Imbiss'],
+        'plumber': ['Sanitär', 'Klempner', 'Installateur'],
+        'barber': ['Friseur', 'Barbershop', 'Herrenfriseur'],
+        'hairdresser': ['Friseur', 'Friseursalon'],
+        'bakery': ['Bäckerei', 'Konditorei'],
+        'electrician': ['Elektriker', 'Elektro'],
+        'painter': ['Maler', 'Malermeister'],
+        'carpenter': ['Schreiner', 'Tischler'],
+        'cleaning': ['Reinigung', 'Gebäudereinigung'],
+        'tailor': ['Schneiderei', 'Änderungsschneiderei'],
+        'mechanic': ['Werkstatt', 'KFZ Werkstatt'],
+        'garage': ['Autowerkstatt', 'KFZ Werkstatt'],
+        'default': ['Geschäft', 'Dienstleistung']
+      }
+    },
+    austria: {
+      cities: ['Wien', 'Graz', 'Linz', 'Salzburg', 'Innsbruck', 'Klagenfurt', 'Villach', 'Wels'],
+      localTerms: {
+        'auto': ['Autohandel', 'Gebrauchtwagen', 'Autohaus'],
+        'car': ['Autohandel', 'Gebrauchtwagen'],
+        'dealership': ['Autohandel', 'Autohaus'],
+        'default': ['Geschäft', 'Dienstleistung']
+      }
+    },
+    kosovo: {
+      cities: ['Prishtinë', 'Prizren', 'Pejë', 'Mitrovicë', 'Ferizaj', 'Gjakovë', 'Gjilan'],
+      localTerms: {
+        'auto': ['Autosallon', 'Autoshitje', 'Auto'],
+        'car': ['Autosallon', 'Autoshitje'],
+        'dealership': ['Autosallon', 'Autoshitje'],
+        'restaurant': ['Restorant', 'Bufe'],
+        'barber': ['Berber', 'Parukeri'],
+        'default': ['Dyqan', 'Biznes']
+      }
+    },
+    albania: {
+      cities: ['Tiranë', 'Durrës', 'Vlorë', 'Shkodër', 'Elbasan', 'Korçë', 'Fier'],
+      localTerms: {
+        'auto': ['Autosallon', 'Autoshitje'],
+        'car': ['Autosallon', 'Autoshitje'],
+        'dealership': ['Autosallon'],
+        'default': ['Dyqan', 'Biznes']
+      }
+    }
+  };
+
+  // Detect country from query
+  let detectedRegion = null;
+  const regionKeywords = {
+    switzerland: ['switzerland', 'schweiz', 'suisse', 'svizzera', 'swiss', 'zürich', 'zurich', 'bern', 'basel', 'genf', 'geneva', 'luzern', 'lucerne'],
+    germany: ['germany', 'deutschland', 'german', 'hamburg', 'münchen', 'munich', 'berlin', 'köln', 'cologne', 'frankfurt', 'stuttgart'],
+    austria: ['austria', 'österreich', 'wien', 'vienna', 'graz', 'salzburg', 'innsbruck'],
+    kosovo: ['kosovo', 'kosova', 'prishtina', 'prishtinë', 'prizren', 'peja', 'pejë'],
+    albania: ['albania', 'shqipëri', 'shqiperi', 'tirana', 'tiranë', 'durrës']
+  };
+
+  for (const [region, keywords] of Object.entries(regionKeywords)) {
+    if (keywords.some(kw => q.includes(kw))) {
+      detectedRegion = region;
+      break;
+    }
+  }
+
+  if (!detectedRegion) return retryQueries;
+
+  const regionData = regionMap[detectedRegion];
+  if (!regionData) return retryQueries;
+
+  // Detect the business type from the query
+  let matchedTermKey = 'default';
+  for (const termKey of Object.keys(regionData.localTerms)) {
+    if (termKey !== 'default' && q.includes(termKey)) {
+      matchedTermKey = termKey;
+      break;
+    }
+  }
+
+  const localTerms = regionData.localTerms[matchedTermKey] || regionData.localTerms['default'];
+  const cities = regionData.cities;
+
+  // Generate city-specific queries using local language terms
+  // Limit to first 5 cities and first 2 terms to avoid excessive scraping
+  for (const term of localTerms.slice(0, 2)) {
+    for (const city of cities.slice(0, 5)) {
+      retryQueries.push(`${term} ${city}`);
+    }
+  }
+
+  return retryQueries;
+}
+
 app.post('/api/scrape', async (req, res) => {
   const { query, minRating, limit } = req.body;
 
@@ -471,23 +704,69 @@ app.post('/api/scrape', async (req, res) => {
   try {
     streamWrite(`[INFO] Connected to scraping stream...`);
     
-    // 1. Scrape Google Maps
-    const rawLeads = await scrapeGoogleMaps({
+    // 1. Scrape Google Maps with original query
+    let rawLeads = await scrapeGoogleMaps({
       query,
       minRating: minRating || 4.0,
       limit: limit || 10,
       logCallback: streamWrite
     });
 
+    // 2. If 0 leads found, try smart retry with localized city-specific searches
     if (rawLeads.length === 0) {
-      streamWrite(`[WARNING] No website-less leads found matching query: "${query}"`);
-      res.end();
-      return;
+      streamWrite(`[RETRY] No website-less leads found with initial query. Generating localized search alternatives...`);
+      
+      const retryQueries = generateRetryQueries(query);
+      
+      if (retryQueries.length > 0) {
+        streamWrite(`[RETRY] Will try ${retryQueries.length} localized search variations to find website-less businesses...`);
+        
+        const targetLimit = limit || 10;
+        
+        for (const retryQuery of retryQueries) {
+          if (rawLeads.length >= targetLimit) {
+            streamWrite(`[RETRY] Reached target of ${targetLimit} leads. Stopping search.`);
+            break;
+          }
+          
+          streamWrite(`[RETRY] Trying: "${retryQuery}" ...`);
+          
+          try {
+            const retryLeads = await scrapeGoogleMaps({
+              query: retryQuery,
+              minRating: minRating || 4.0,
+              limit: Math.min(5, targetLimit - rawLeads.length), // Small batches per retry
+              logCallback: streamWrite
+            });
+            
+            if (retryLeads.length > 0) {
+              streamWrite(`[RETRY] ✅ Found ${retryLeads.length} website-less leads from "${retryQuery}"!`);
+              rawLeads.push(...retryLeads);
+            }
+          } catch (retryErr) {
+            streamWrite(`[RETRY] Query "${retryQuery}" failed: ${retryErr.message}. Continuing...`);
+          }
+        }
+        
+        if (rawLeads.length === 0) {
+          streamWrite(`[WARNING] No website-less leads found after ${retryQueries.length} localized searches.`);
+          streamWrite(`[TIP] Try more specific business types (e.g., "Friseur Hamburg", "Reinigung Zürich") or target smaller cities.`);
+          streamWrite(`[TIP] Businesses in highly digitized markets (auto dealerships, restaurants in major cities) almost always have websites.`);
+          res.end();
+          return;
+        }
+      } else {
+        streamWrite(`[WARNING] No website-less leads found matching query: "${query}"`);
+        streamWrite(`[TIP] Try searching for specific business types in specific cities (e.g., "Friseur Hamburg" instead of "hairdresser Germany").`);
+        streamWrite(`[TIP] Smaller, service-based businesses (cleaners, tailors, barbers) are more likely to lack websites.`);
+        res.end();
+        return;
+      }
     }
 
     streamWrite(`[INFO] Google Maps scrape complete. Found ${rawLeads.length} leads matching filters.`);
 
-    // 2. Save/Enrich leads sequentially
+    // 3. Save/Enrich leads sequentially
     for (let i = 0; i < rawLeads.length; i++) {
       const lead = rawLeads[i];
 
@@ -509,7 +788,7 @@ app.post('/api/scrape', async (req, res) => {
         location: lead.location
       });
 
-      streamWrite(`[GEMINI] Analyzing snippets using Gemini 1.5 Flash...`);
+      streamWrite(`[GEMINI] Analyzing snippets using Gemini AI...`);
 
       // Enrich lead using Gemini
       const enriched = await enrichLeadDetails({
@@ -517,6 +796,8 @@ app.post('/api/scrape', async (req, res) => {
         category: lead.category,
         location: lead.location,
         phone_number: lead.phone_number,
+        rating: lead.rating,
+        reviews_count: lead.reviews_count,
         search_snippets: searchSnippets
       });
 
@@ -536,15 +817,16 @@ app.post('/api/scrape', async (req, res) => {
         confidence_score: enriched.confidence_score || 'Low',
         quick_pitch_hook: enriched.quick_pitch_hook || '',
         personalized_subject: enriched.personalized_subject || '',
-        personalized_body: enriched.personalized_body || ''
+        personalized_body: enriched.personalized_body || '',
+        personalized_whatsapp: enriched.personalized_whatsapp || ''
       };
 
       // Save to MySQL DB
       streamWrite(`[DATABASE] Saving lead to MySQL table...`);
       await executeQuery(
         `INSERT INTO leads 
-          (business_name, category, location, phone_number, rating, reviews_count, status, estimated_owner_name, primary_contact_email, primary_social_pitch_url, confidence_score, quick_pitch_hook, personalized_subject, personalized_body) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (business_name, category, location, phone_number, rating, reviews_count, status, estimated_owner_name, primary_contact_email, primary_social_pitch_url, confidence_score, quick_pitch_hook, personalized_subject, personalized_body, personalized_whatsapp) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           finalLead.business_name,
           finalLead.category,
@@ -559,11 +841,12 @@ app.post('/api/scrape', async (req, res) => {
           finalLead.confidence_score,
           finalLead.quick_pitch_hook,
           finalLead.personalized_subject,
-          finalLead.personalized_body
+          finalLead.personalized_body,
+          finalLead.personalized_whatsapp
         ]
       );
 
-      streamWrite(`[SUCCESS] Lead #${i+1} saved: ${finalLead.business_name} (${finalLead.primary_contact_email || 'No email found'})`);
+      streamWrite(`[SUCCESS] Lead #${i+1} saved: ${finalLead.business_name} (${finalLead.phone_number ? 'Phone & WhatsApp ready' : 'No phone'})`);
     }
 
     streamWrite(`[SUCCESS] Full scraping sequence successfully processed!`);

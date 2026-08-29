@@ -50,7 +50,9 @@ export function detectLanguageByLocation(location = '', phone = '') {
     'essen', 'neuss', 'ratingen', 'köln', 'koeln', 'münchen', 'muenchen', 
     'berlin', 'hamburg', 'frankfurt', 'stuttgart', 'dortmund', 'bochum', 
     'duisburg', 'wuppertal', 'bonn', 'münster', 'muenster', 'karlsruhe', 
-    'mannheim', 'wiesbaden', 'straße', 'str.', 'weg', 'allee', 'platz'
+    'mannheim', 'wiesbaden', 'straße', 'str.', 'weg', 'allee', 'platz',
+    'switzerland', 'schweiz', 'zürich', 'zurich', 'bern', 'basel', 'luzern',
+    'austria', 'österreich', 'wien', 'graz', 'salzburg', 'innsbruck'
   ];
   
   const hasGermanZip = /\b\d{5}\b/.test(combined);
@@ -60,11 +62,11 @@ export function detectLanguageByLocation(location = '', phone = '') {
   return 'English';
 }
 
-export async function enrichLeadDetails({ business_name, category, location, phone_number, search_snippets }) {
+export async function enrichLeadDetails({ business_name, category, location, phone_number, search_snippets, rating, reviews_count }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.warn('[ENRICHER] GEMINI_API_KEY not found in environment, returning mock values.');
-    return mockEnrichment(business_name, location, phone_number);
+    return mockEnrichment(business_name, location, phone_number, rating, reviews_count);
   }
 
   const targetLang = detectLanguageByLocation(location, phone_number);
@@ -77,38 +79,64 @@ export async function enrichLeadDetails({ business_name, category, location, pho
     });
 
     const prompt = `
-You are an expert OSINT (Open-Source Intelligence) and B2B lead generation assistant specializing in local business data enrichment and personalized sales copywriting. 
+You are an OSINT lead generation assistant. Analyze this local business (which has no website on Google Maps) and enrich the data.
 
-Your objective is to analyze the provided raw Google Maps data of a local business that lacks a website, and perform targeted, step-by-step reasoning to:
-1. Determine if they already have an official website anywhere on the internet that wasn't listed on Google Maps.
-2. Uncover the direct contact details of the owner or decision-maker.
-3. Draft a highly personalized, custom cold email outreach subject and body specifically tailored for them.
-
-### Input Data Provided:
+### Input Data:
 - Business Name: ${business_name}
 - Category: ${category}
 - Location: ${location}
 - Phone Number: ${phone_number || 'Not available'}
-- Raw Social Links and Search Snippets found via Search:
+- Google Rating: ${rating || 'N/A'} (${reviews_count || 0} reviews)
+- Search Snippets:
 ${search_snippets}
 
-### Your Task Execution Strategy:
-1. Identify the Digital Footprint: Analyze the business name and location. Determine the most likely platforms where a local business of this type would manage their presence (e.g., Facebook Pages, Instagram, local business registries, Impressum listings).
-2. Check for Existing Official Website: Check the search snippets and URLs carefully. If you discover they actually *do* have an official business website (e.g. \`autosallonipo.com\` or \`dioniauto.de\`, excluding general directories like Yelp, GelbeSeiten, Facebook, Instagram, or maps), set \`status\` to \`Website Exists\` and output the website URL in \`discovered_website\`.
-3. Extract the Decision-Maker: Search for signs of ownership. Look for phrases like "Owner," "Geschäftsführer," "Inhaber," "Founder," or names attached to the public legal registration or social media "About" sections.
-4. Clean & Validate: Isolate the most direct contact method. Prioritize a direct personal/business email over a generic contact form.
-5. Language Requirement:
-   - You MUST write the \`personalized_subject\` and \`personalized_body\` in: **${targetLang}**.
-   - If language is **German**: Use formal, polite address ("Sie", e.g., "Sehr geehrter Herr/Frau [Name]" or "Sehr geehrter Inhaber").
-   - If language is **Albanian**: Write in extremely natural, modern, and casual Albanian as spoken and typed online in Kosovo and Albania. Use standard letters 'e' instead of diacritic/umlaut 'ë' and 'c' instead of 'ç' (e.g. write "Pershendetje, pashe qe keni vleresime shume te mira..." instead of "I nderuar pronar, pashë vlerësimet tona të shkëlqyera..."). Make it sound natural, human, and professional, like a direct message.
-   - Sign off the pitch formally as: "Art Halimi - arthalimi.com". Do NOT use placeholders like "[Your Name]" or "[Your Company Name]". Sign it off exactly as "Art Halimi - arthalimi.com".
-6. Draft Personalized Email Pitch:
-   - Write a custom subject line (\`personalized_subject\`) that is short, intriguing, and mentions their business or high reviews.
-   - Write a complete, highly personalized cold email body (\`personalized_body\`) of 2-3 paragraphs. Mention their Google reviews/rating, point out that they have excellent reviews but lack a website to directly convert visitors into customers, explain how a fast landing page with direct bookings will help them, and suggest a 5-minute chat. Address the owner by name if known, otherwise use a polite general title.
+### Tasks:
+1. Check if they actually have an official website somewhere (not Facebook/Instagram/directories). If yes, set status to "Website Exists" and fill discovered_website.
+2. Try to find the owner/decision-maker name.
+3. Find a direct contact email if possible.
+4. Write a cold email and a WhatsApp message in **${targetLang}**.
 
-### Output Format:
-Provide your findings in a strict, clean JSON format with NO conversational filler, so it can be parsed directly into a database. Make sure you return EXACTLY this JSON structure:
+### CRITICAL WRITING RULES - READ CAREFULLY:
+The WhatsApp message and email MUST sound like a real human being wrote them. NOT like AI. NOT like marketing copy. Like a real person casually texting someone about business.
 
+Rules:
+- ZERO emojis. Not a single one. No stars, no rockets, no phones, no sparkles. Nothing.
+- No corporate buzzwords. No "high-converting", no "leverage", no "unlock potential", no "dedicated online presence", no "herausragend", no "beeindruckend".
+- No exclamation marks spam. Use them sparingly, max 1 in the whole message.
+- Short sentences. The way people actually text.
+- Don't congratulate them on their rating like some marketing bot. Just mention it naturally: "I saw you have good reviews on Google" or "hab gesehen ihr habt gute Bewertungen" -- that is it.
+- Don't oversell. Don't list 5 benefits of having a website. Just say you noticed they don't have one, you make websites, you would show them a free draft if they are interested.
+- Sound like a 25-year-old web developer texting, not a sales department.
+
+Language-specific rules for WhatsApp:
+${targetLang === 'German' ? `
+- Write in natural, everyday German. Not formal business German. Use "Sie" but keep it casual.
+- MUST start with: "Hallo, ich bin Art Halimi, ich mache Webseiten (arthalimi.com)."
+- Keep it short. 4-5 sentences max after the intro.
+- Example of the right tone (DO NOT COPY THIS WORD FOR WORD, write something original in this style): "Hab gesehen dass ihr gute Bewertungen auf Google habt aber keine eigene Webseite. Ich mach sowas beruflich und wuerde euch gerne mal nen kostenlosen Entwurf zeigen wie das aussehen koennte. Kein Stress, kein Vertrag. Falls Interesse besteht einfach kurz antworten."
+- Sign off with just "Gruss, Art"
+` : ''}
+${targetLang === 'Albanian' ? `
+- Write in natural, everyday Albanian (Kosovo dialect is fine). Not formal. Not literary. Just normal how people talk.
+- MUST start with: "Pershendetje, une jam Art Halimi, merrem me web development (arthalimi.com)."
+- Keep it short. 4-5 sentences max after the intro.
+- Example of the right tone (DO NOT COPY THIS WORD FOR WORD, write something original in this style): "E pashe qe keni vleresime te mira ne Google ama ska webfaqe tuajen. Un i boj webfaqe profesionale dhe doja me ju tregu nje draft falas si mundet me dukje. Pa asnje obligim. Nese ju intereson thjesht me kthy nje pergjigje."
+- Sign off with just "Faleminderit, Art"
+` : ''}
+${targetLang === 'English' ? `
+- Write in casual, natural English. Like texting a potential business contact.
+- MUST start with: "Hey, I'm Art Halimi, I build websites (arthalimi.com)."
+- Keep it short. 4-5 sentences max after the intro.
+- Sign off with just "Cheers, Art"
+` : ''}
+
+For the email (personalized_body):
+- Same vibe as WhatsApp but slightly more structured. Still no emojis. Still human.
+- Sign off as "Art Halimi - arthalimi.com"
+- If German: Use "Sie" form but don't be stiff.
+- If Albanian: Keep it simple and direct.
+
+### Output JSON (strict format, no extra text):
 {
   "business_name": "Verified Business Name",
   "status": "Lead Found" or "Website Exists" or "No Context Found",
@@ -117,9 +145,10 @@ Provide your findings in a strict, clean JSON format with NO conversational fill
   "primary_contact_email": "email@domain.com or null",
   "primary_social_pitch_url": "Direct link to FB/IG messaging or null",
   "confidence_score": "High" or "Medium" or "Low",
-  "quick_pitch_hook": "A 1-sentence personalized pitch hook mentioning their high reviews and how a website can help them scale.",
-  "personalized_subject": "Custom subject line written in the native country language.",
-  "personalized_body": "Custom 2-to-3 paragraph cold email written in the native country language, signed off as 'Art Halimi - arthalimi.com'."
+  "quick_pitch_hook": "One short sentence about their situation, no emojis.",
+  "personalized_subject": "Short email subject, no emojis, in ${targetLang}.",
+  "personalized_body": "Cold email body in ${targetLang}. Human. No emojis. Signed 'Art Halimi - arthalimi.com'.",
+  "personalized_whatsapp": "WhatsApp message in ${targetLang}. Sounds like a real person texting. No emojis. Starts with the required intro line."
 }
 `;
 
@@ -134,23 +163,153 @@ Provide your findings in a strict, clean JSON format with NO conversational fill
 
   } catch (err) {
     console.error(`[ENRICHER] Gemini Enrichment failed: ${err.message}`);
-    return mockEnrichment(business_name, location, phone_number);
+    return mockEnrichment(business_name, location, phone_number, rating, reviews_count);
   }
 }
 
-function mockEnrichment(business_name, location = '', phone = '') {
+export async function generateCustomWhatsApp({
+  business_name,
+  category = 'Local Business',
+  location = '',
+  phone_number = '',
+  rating = 5.0,
+  reviews_count = 0,
+  estimated_owner_name = '',
+  language = null,
+  tone = 'Professional & Friendly',
+  customInstructions = ''
+}) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const targetLang = language || detectLanguageByLocation(location, phone_number);
+
+  if (!apiKey) {
+    return generateMockWhatsApp(business_name, targetLang, estimated_owner_name, rating, reviews_count);
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const prompt = `
+Write a WhatsApp message from Art Halimi (web developer, arthalimi.com) to ${business_name}.
+
+Context:
+- Business: ${business_name} (${category})
+- Location: ${location}
+- Rating: ${rating || 'good'} stars, ${reviews_count || 0} reviews on Google
+- Contact: ${estimated_owner_name && estimated_owner_name !== 'Unknown' ? estimated_owner_name : 'the business'}
+- Language: ${targetLang}
+- Tone: ${tone}
+${customInstructions ? `- Extra instructions: ${customInstructions}` : ''}
+
+CRITICAL RULES - this is the most important part:
+
+1. ZERO emojis. Absolutely none. Not one. If you put a single emoji I will reject the entire output.
+
+2. This has to sound like a real person wrote it. Like someone actually typing on their phone. Not marketing copy. Not AI. Not a template.
+
+3. Keep it SHORT. Like 5-7 lines max. Nobody reads long WhatsApp messages from strangers.
+
+4. Don't be cringe. Don't say "beeindruckend" or "hervorragend" or "herausragend" or "ausgezeichnet" in German. Don't say "shkelqyer" or "mbreslenese" or "jashtezakonisht" in Albanian. Just talk normal.
+
+5. Don't list benefits of having a website. Just say you noticed they don't have one and you would make them a free draft to see if they like it.
+
+6. Starting line MUST be:
+${targetLang === 'German' ? '   "Hallo, ich bin Art Halimi, ich mache Webseiten (arthalimi.com)."' : ''}
+${targetLang === 'Albanian' ? '   "Pershendetje, une jam Art Halimi, merrem me web development (arthalimi.com)."' : ''}
+${targetLang === 'English' ? '   "Hey, I\'m Art Halimi, I build websites (arthalimi.com)."' : ''}
+
+7. End casually. "Gruss, Art" or "Faleminderit, Art" or "Cheers, Art". Not some formal corporate signoff.
+
+8. Output ONLY the raw message text. No markdown. No quotes. No explanation. Just the message as it would appear in WhatsApp.
+`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    // Strip any emojis that might have slipped through
+    const cleaned = text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{27BF}\u{2B50}\u{2728}\u{2764}\u{FE0F}\u{200D}\u{20E3}\u{FE0E}\u{E0020}-\u{E007F}]/gu, '').replace(/  +/g, ' ');
+    return cleaned;
+  } catch (err) {
+    console.error(`[GENERATE_WHATSAPP] Error: ${err.message}`);
+    return generateMockWhatsApp(business_name, targetLang, estimated_owner_name, rating, reviews_count);
+  }
+}
+
+function generateMockWhatsApp(business_name, lang, owner, rating, reviews_count) {
+  if (lang === 'German') {
+    return `Hallo, ich bin Art Halimi, ich mache Webseiten (arthalimi.com).
+
+Hab euer Geschäft auf Google Maps gesehen${rating ? `, ${rating} Sterne` : ''} - sieht gut aus. Mir ist aufgefallen dass ihr keine eigene Webseite habt.
+
+Ich mach sowas beruflich und würde euch gerne mal nen kostenlosen Entwurf zeigen, einfach damit ihr seht wie das aussehen könnte. Kein Vertrag, kein Stress.
+
+Falls Interesse besteht einfach kurz antworten, dann können wir 5 Minuten telefonieren.
+
+Gruss, Art`;
+  }
+
+  if (lang === 'Albanian') {
+    return `Pershendetje, une jam Art Halimi, merrem me web development (arthalimi.com).
+
+E pashe ${business_name} ne Google Maps${rating ? `, ${rating} yje` : ''}, duket mire. Vetem vura re qe nuk keni nje webfaqe tuajen.
+
+Une i boj webfaqe profesionale dhe doja me ju tregu nje draft falas, vetem me pa se si do te dukej. Pa asnje obligim.
+
+Nese ju intereson, thjesht me kthy nje pergjigje te shkurter.
+
+Faleminderit, Art`;
+  }
+
+  return `Hey, I'm Art Halimi, I build websites (arthalimi.com).
+
+Found ${business_name} on Google Maps${rating ? `, ${rating} stars` : ''} - looks solid. Noticed you don't have your own website though.
+
+I do this for a living and I'd be happy to put together a free draft for you, just so you can see what it could look like. No strings attached.
+
+If you're interested just shoot me a quick reply and we can hop on a 5 min call.
+
+Cheers, Art`;
+}
+
+function mockEnrichment(business_name, location = '', phone = '', rating = 4.8, reviews_count = 12) {
   const lang = detectLanguageByLocation(location, phone);
   
-  let subject = `💡 Website suggestion for ${business_name}`;
-  let body = `Hi there,\n\nI was looking up local businesses and loved your Google Reviews! However, I noticed you do not have a website yet; I'd love to build one to help you showcase your quality work.\n\nBest regards,\nArt Halimi - arthalimi.com`;
+  let subject, body;
 
   if (lang === 'German') {
-    subject = `💡 Website-Vorschlag für ${business_name}`;
-    body = `Sehr geehrter Inhaber,\n\nich habe Ihre hervorragenden Bewertungen auf Google Maps gesehen und mich gewundert, warum ein so toller Betrieb noch keine eigene Website hat. In der heutigen Zeit ist eine professionelle Webpräsenz entscheidend, um direkt Kunden zu gewinnen.\n\nIch würde Ihnen gerne einen kostenlosen Entwurf zeigen, wie Ihre Website aussehen könnte. Hätten Sie diese Woche Zeit für ein kurzes 5-Minuten-Gespräch?\n\nMit freundlichen Grüßen,\nArt Halimi - arthalimi.com`;
+    subject = `Webseite für ${business_name}`;
+    body = `Hallo,
+
+ich hab ${business_name} auf Google Maps gefunden und gesehen dass ihr gute Bewertungen habt aber keine eigene Webseite.
+
+Ich bin Webentwickler und mache das beruflich. Würde euch gerne mal einen kostenlosen Entwurf zeigen wie eure Seite aussehen könnte. Kein Vertrag, nichts verbindliches - einfach nur damit ihr seht was möglich wäre.
+
+Falls ihr Interesse habt, meldet euch einfach kurz.
+
+Art Halimi - arthalimi.com`;
   } else if (lang === 'Albanian') {
-    subject = `💡 Sugjerim per uebfaqe per ${business_name}`;
-    body = `Pershendetje,\n\nPashe qe keni vleresime shume te mira ne Google Maps per biznesin tuaj. Vura re qe nuk keni ende nje uebfaqe aktive. Nje faqe interneti e thjeshte dhe profesionale do t'ju ndihmonte te merrni me shume kliente direkt, pa pasur nevoje per ndermjetesues.\n\nKam pergatitur nje koncept apo dizajn fillestar falas per ju. A keni kohe per nje bisede te shkurter 5-minuteshe kete jave per ta shikuar bashke?\n\nMe respekt,\nArt Halimi - arthalimi.com`;
+    subject = `Webfaqe per ${business_name}`;
+    body = `Pershendetje,
+
+E pashe ${business_name} ne Google Maps, keni vleresime te mira por nuk keni nje webfaqe tuajen.
+
+Une merrem me web development dhe doja me ju tregu nje draft falas se si do mundet me dukje faqja juaj. Pa asnje obligim.
+
+Nese ju intereson thjesht me kthy nje pergjigje.
+
+Art Halimi - arthalimi.com`;
+  } else {
+    subject = `Website for ${business_name}`;
+    body = `Hi there,
+
+Found ${business_name} on Google Maps - good reviews but no website. I build websites for a living and I'd be happy to put together a free draft for you. No commitment, just to show you what it could look like.
+
+Let me know if you're interested.
+
+Art Halimi - arthalimi.com`;
   }
+
+  const whatsapp = generateMockWhatsApp(business_name, lang, 'Unknown', rating, reviews_count);
 
   return {
     business_name: business_name,
@@ -160,8 +319,13 @@ function mockEnrichment(business_name, location = '', phone = '') {
     primary_contact_email: null,
     primary_social_pitch_url: null,
     confidence_score: "Low",
-    quick_pitch_hook: lang === 'German' ? 'Hervorragende Google-Bewertungen, aber keine Website.' : 'Vleresime shume te mira ne Google, por pa uebfaqe.',
+    quick_pitch_hook: lang === 'German'
+      ? `Gute Google-Bewertungen aber keine eigene Webseite.`
+      : lang === 'Albanian'
+        ? `Vleresime te mira ne Google por pa webfaqe.`
+        : `Good Google reviews but no website.`,
     personalized_subject: subject,
-    personalized_body: body
+    personalized_body: body,
+    personalized_whatsapp: whatsapp
   };
 }

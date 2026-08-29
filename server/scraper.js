@@ -1,10 +1,99 @@
 import puppeteer from 'puppeteer';
 
+/**
+ * Smart Query Preprocessor
+ * Converts natural language queries into clean Google Maps search terms.
+ * Examples:
+ *   "Find businesses with no website, for example an auto dealership in Switzerland"
+ *   → "auto dealership Switzerland"
+ *   "Plumbers in Hamburg" → "Plumbers Hamburg"
+ *   "Friseur ohne Webseite in Zürich" → "Friseur Zürich"
+ */
+function preprocessQuery(rawQuery) {
+  let q = rawQuery.trim();
+
+  // Remove common natural language noise phrases (case-insensitive)
+  const noisePatterns = [
+    /find\s+(me\s+)?/gi,
+    /search\s+(for\s+)?/gi,
+    /look\s+(for\s+)?/gi,
+    /businesses?\s+with\s+no\s+websites?/gi,
+    /businesses?\s+without\s+(a\s+)?websites?/gi,
+    /without\s+(a\s+)?websites?/gi,
+    /with\s+no\s+websites?/gi,
+    /ohne\s+webseite[n]?/gi,
+    /ohne\s+website[s]?/gi,
+    /for\s+example\s+/gi,
+    /for\s+instance\s+/gi,
+    /such\s+as\s+/gi,
+    /like\s+an?\s+/gi,
+    /,\s*for\s+example/gi,
+    /,\s*e\.?g\.?/gi,
+    /please\s*/gi,
+    /i\s+want\s+(to\s+)?/gi,
+    /i\s+need\s+(to\s+)?/gi,
+    /can\s+you\s+/gi,
+    /show\s+me\s+/gi,
+    /get\s+me\s+/gi,
+    /an?\s+(?=\w+\s+(in|near|around))/gi,  // Remove "an" before "X in Y"
+  ];
+
+  for (const pattern of noisePatterns) {
+    q = q.replace(pattern, ' ');
+  }
+
+  // Clean up extra whitespace, commas, and leading/trailing junk
+  q = q.replace(/[,;]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Remove leading articles if they start the cleaned query
+  q = q.replace(/^(an?|the|die|der|das|ein[e]?)\s+/i, '');
+
+  // If still too long or noisy, try to extract "[business type] in [location]" pattern
+  const inPattern = q.match(/(.+?)\s+(?:in|near|around|bei|nahe)\s+(.+)/i);
+  if (inPattern) {
+    const businessType = inPattern[1].trim();
+    const location = inPattern[2].trim();
+    q = `${businessType} ${location}`;
+  }
+
+  return q || rawQuery; // Fallback to original if preprocessing empties it
+}
+
+/**
+ * Generate alternative search queries to try if the first one yields no results.
+ * Google Maps responds better to specific local terms.
+ */
+function generateAlternativeQueries(cleanedQuery) {
+  const alternatives = [];
+  
+  // Try with "near me" style or more specific local terms
+  const parts = cleanedQuery.split(/\s+/);
+  if (parts.length >= 2) {
+    // Try just the location with the business type
+    alternatives.push(cleanedQuery);
+    
+    // Try reversing: "location business_type"
+    const inMatch = cleanedQuery.match(/(.+?)\s+(\S+)$/i);
+    if (inMatch) {
+      alternatives.push(`${inMatch[2]} ${inMatch[1]}`);
+    }
+  }
+  
+  return alternatives;
+}
+
+
 export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, logCallback }) {
   const log = (msg) => {
     console.log(`[SCRAPER] ${msg}`);
     if (logCallback) logCallback(`[SCRAPER] ${msg}`);
   };
+
+  // Preprocess the query to strip natural language noise
+  const cleanQuery = preprocessQuery(query);
+  if (cleanQuery !== query) {
+    log(`Smart query cleanup: "${query}" → "${cleanQuery}"`);
+  }
 
   log(`Launching headless browser...`);
   const browser = await puppeteer.launch({
@@ -24,7 +113,7 @@ export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, log
   // Set user agent to mimic regular browser
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-  const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}?hl=en`;
+  const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(cleanQuery)}?hl=en`;
   log(`Navigating to Google Maps search...`);
   await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
@@ -63,7 +152,7 @@ export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, log
     log(`Non-blocking issue handling consent form: ${consentErr.message}`);
   }
 
-  log(`Searching listings for "${query}"...`);
+  log(`Searching listings for "${cleanQuery}"...`);
   
   // Locate the results feed container
   let feedSelector = 'div[role="feed"]';
@@ -95,27 +184,32 @@ export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, log
   let prevHeight = 0;
   let scrollAttempts = 0;
   let itemsCount = 0;
+  const maxScrollAttempts = 30; // More aggressive scrolling to find smaller local businesses
+  const targetListings = limit * 4; // Collect 4x more listings to have better filtering odds
   
-  while (scrollAttempts < 15 && itemsCount < limit * 2) {
+  while (scrollAttempts < maxScrollAttempts && itemsCount < targetListings) {
     itemsCount = await page.evaluate((sel) => {
       const links = document.querySelectorAll('a[href*="/maps/place/"]');
       return links.length;
     }, feedSelector);
 
-    log(`Found ${itemsCount} listings in scroll buffer...`);
+    if (scrollAttempts % 5 === 0 || itemsCount !== prevHeight) {
+      log(`Found ${itemsCount} listings in scroll buffer...`);
+    }
+    prevHeight = itemsCount;
     
-    if (itemsCount >= limit * 2) break;
+    if (itemsCount >= targetListings) break;
 
     const scrolled = await page.evaluate(() => {
       const feed = document.querySelector('div[role="feed"]');
       if (feed) {
-        feed.scrollBy(0, 1500);
+        feed.scrollBy(0, 2000);
         return true;
       }
       const firstLink = document.querySelector('a[href*="/maps/place/"]');
       const panel = firstLink ? firstLink.closest('div.m6QErb') : null;
       if (panel) {
-        panel.scrollBy(0, 1500);
+        panel.scrollBy(0, 2000);
         return true;
       }
       return false;
@@ -123,7 +217,7 @@ export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, log
 
     if (!scrolled) break;
     
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     
     // Check if bottom of feed is reached
     const isEnd = await page.evaluate(() => {
@@ -164,7 +258,7 @@ export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, log
     }
   }
 
-  const slicedUrls = uniqueUrls.slice(0, limit * 2);
+  const slicedUrls = uniqueUrls.slice(0, limit * 4);
   
   for (const url of slicedUrls) {
     if (leads.length >= limit) {
