@@ -17,7 +17,7 @@ export async function connectDB() {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'client_scrapper',
+    database: process.env.DB_NAME || 'prospectly',
   };
 
   try {
@@ -46,10 +46,25 @@ export async function connectDB() {
 }
 
 async function initTables(db) {
+  // Users table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      password_hash VARCHAR(255) NOT NULL,
+      full_name VARCHAR(150) NOT NULL,
+      profession VARCHAR(150) DEFAULT 'Web Developer',
+      portfolio_url VARCHAR(255) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    );
+  `);
+
   // Leads table
   await db.query(`
     CREATE TABLE IF NOT EXISTS leads (
       id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NULL,
       business_name VARCHAR(255) NOT NULL,
       category VARCHAR(255) NULL,
       location VARCHAR(255) NULL,
@@ -67,11 +82,15 @@ async function initTables(db) {
       personalized_whatsapp TEXT NULL,
       last_contacted_at TIMESTAMP NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_user_id (user_id)
     );
   `);
 
-  // Safely add personalized_whatsapp and last_contacted_at columns if table already existed
+  // Safely add missing columns if table already existed
+  try {
+    await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS user_id INT NULL;`);
+  } catch (e) {}
   try {
     await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS personalized_whatsapp TEXT NULL;`);
   } catch (e) {}

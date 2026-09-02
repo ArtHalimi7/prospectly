@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 // Helper to format international phone number for WhatsApp wa.me link
 export const cleanPhoneForWhatsApp = (phone, location = '') => {
@@ -86,6 +87,7 @@ export function classifyPhoneNumber(phone = '', location = '') {
 const WhatsAppModal = ({ lead, isOpen, onClose, onSaveLead, onNextLead, hasNextLead }) => {
   if (!isOpen || !lead) return null;
 
+  const { user, token } = useAuth();
   const [phone, setPhone] = useState(lead.phone_number || '');
   const [message, setMessage] = useState(lead.personalized_whatsapp || lead.personalized_body || '');
   const [language, setLanguage] = useState(() => {
@@ -107,6 +109,7 @@ const WhatsAppModal = ({ lead, isOpen, onClose, onSaveLead, onNextLead, hasNextL
   const [status, setStatus] = useState(lead.status || 'Enriched');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Sync state if lead prop changes
   useEffect(() => {
     setPhone(lead.phone_number || '');
     setMessage(lead.personalized_whatsapp || lead.personalized_body || '');
@@ -124,18 +127,31 @@ const WhatsAppModal = ({ lead, isOpen, onClose, onSaveLead, onNextLead, hasNextL
 
   const cleanedPhone = cleanPhoneForWhatsApp(phone, lead.location);
 
-  // Trigger AI generation
+  // AI-Assisted Message Generation
   const handleGenerateAI = async (langToUse = language, toneToUse = tone) => {
     setIsGenerating(true);
     setLanguage(langToUse);
+
+    const senderName = user?.full_name || 'Art Halimi';
+    const senderProfession = user?.profession || 'Web Developer';
+    const senderPortfolio = user?.portfolio_url || 'arthalimi.com';
+    const senderFirstName = senderName.split(' ')[0] || 'Art';
+    const portfolioSnippet = senderPortfolio ? ` (${senderPortfolio})` : '';
+
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`http://localhost:5000/api/leads/${lead.id}/generate-whatsapp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           language: langToUse,
           tone: toneToUse,
-          customInstructions
+          customInstructions,
+          sender_name: senderName,
+          sender_profession: senderProfession,
+          sender_portfolio: senderPortfolio
         })
       });
 
@@ -152,7 +168,7 @@ const WhatsAppModal = ({ lead, isOpen, onClose, onSaveLead, onNextLead, hasNextL
         // Fallback generator directly
         const fallbackRes = await fetch('http://localhost:5000/api/generate-whatsapp', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             business_name: lead.business_name,
             category: lead.category,
@@ -163,7 +179,10 @@ const WhatsAppModal = ({ lead, isOpen, onClose, onSaveLead, onNextLead, hasNextL
             estimated_owner_name: lead.estimated_owner_name,
             language: langToUse,
             tone: toneToUse,
-            customInstructions
+            customInstructions,
+            sender_name: senderName,
+            sender_profession: senderProfession,
+            sender_portfolio: senderPortfolio
           })
         });
         if (fallbackRes.ok) {
@@ -181,10 +200,10 @@ const WhatsAppModal = ({ lead, isOpen, onClose, onSaveLead, onNextLead, hasNextL
       const isGerman = (langToUse === 'Deutsch' || langToUse === 'German');
       const isAlbanian = langToUse === 'Albanian';
       const defaultGreeting = isGerman
-        ? `Hallo, ich bin Art Halimi, ich mache Webseiten (arthalimi.com).\n\nHab ${lead.business_name} auf Google Maps gesehen - sieht gut aus. Mir ist aufgefallen dass ihr keine eigene Webseite habt.\n\nIch mach sowas beruflich und würde euch gerne mal nen kostenlosen Entwurf zeigen, einfach damit ihr seht wie das aussehen könnte. Kein Vertrag, kein Stress.\n\nFalls Interesse besteht einfach kurz antworten, dann können wir 5 Minuten telefonieren.\n\nGruss, Art`
+        ? `Hallo, ich bin ${senderName}, ich mache Webseiten${portfolioSnippet}.\n\nHab ${lead.business_name} auf Google Maps gesehen - sieht gut aus. Mir ist aufgefallen dass ihr keine eigene Webseite habt.\n\nIch mach sowas beruflich und würde euch gerne mal nen kostenlosen Entwurf zeigen, einfach damit ihr seht wie das aussehen könnte. Kein Vertrag, kein Stress.\n\nFalls Interesse besteht einfach kurz antworten, dann können wir 5 Minuten telefonieren.\n\nGruss, ${senderFirstName}`
         : isAlbanian
-        ? `Pershendetje, une jam Art Halimi, merrem me web development (arthalimi.com).\n\nE pashe ${lead.business_name} ne Google Maps, duket mire. Vetem vura re qe nuk keni nje webfaqe tuajen.\n\nUne i boj webfaqe profesionale dhe doja me ju tregu nje draft falas, vetem me pa se si do te dukej. Pa asnje obligim.\n\nNese ju intereson, thjesht me kthy nje pergjigje te shkurter.\n\nFaleminderit, Art`
-        : `Hey, I'm Art Halimi, I build websites (arthalimi.com).\n\nFound ${lead.business_name} on Google Maps - looks solid. Noticed you don't have your own website though.\n\nI do this for a living and I'd be happy to put together a free draft for you, just so you can see what it could look like. No strings attached.\n\nIf you're interested just shoot me a quick reply and we can hop on a 5 min call.\n\nCheers, Art`;
+        ? `Pershendetje, une jam ${senderName}...\n\nJam ${senderProfession}, pra me profesion krijoj website per biznese te ndryshme.\n\nE pashe ${lead.business_name} ne Google Maps, dhe e pashe qe keni kogja vlersime te mira.\n\nNese jeni te interesum, mundem me jau kriju nje dizajn koncept se qysh mundet mu dok nje faqe per biznesin tuj, pa asnje obligim, dhe nese ju pelqen mundemi me diskutu per detaje.\n\nFaleminderit, ${senderFirstName}`
+        : `Hey, I'm ${senderName}, I build websites${portfolioSnippet}.\n\nFound ${lead.business_name} on Google Maps - looks solid. Noticed you don't have your own website though.\n\nI do this for a living and I'd be happy to put together a free draft for you, just so you can see what it could look like. No strings attached.\n\nIf you're interested just shoot me a quick reply and we can hop on a 5 min call.\n\nCheers, ${senderFirstName}`;
       setMessage(defaultGreeting);
       if (onSaveLead) {
         onSaveLead({ ...lead, personalized_whatsapp: defaultGreeting, phone_number: phone });

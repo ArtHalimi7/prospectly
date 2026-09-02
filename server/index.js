@@ -5,9 +5,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { connectDB } from './db.js';
-import { scrapeGoogleMaps, scrapeSearchSnippets, abortScraping } from './scraper.js';
+import { scrapeGoogleMaps, scrapeSearchSnippets, probeDirectDomain, abortScraping } from './scraper.js';
 import { enrichLeadDetails, generateCustomWhatsApp } from './enricher.js';
 import { sendEmail } from './mailer.js';
+import { hashPassword, comparePassword, generateToken, requireAuth, optionalAuth } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +35,7 @@ function updateEnvFile(config) {
 // -------------------------------------------------------------
 // Database Connection & JSON File Fallback helper
 // -------------------------------------------------------------
+const USERS_FILE = path.join(__dirname, 'users.json');
 const LEADS_FILE = path.join(__dirname, 'leads.json');
 const TEMPLATES_FILE = path.join(__dirname, 'templates.json');
 const CAMPAIGNS_FILE = path.join(__dirname, 'campaigns.json');
@@ -58,7 +60,68 @@ function writeJSONFile(filePath, data) {
 function executeJSONQuery(query, params = []) {
   const normalized = query.trim().replace(/\s+/g, ' ');
 
+  // 0. USERS QUERIES
+  if (normalized.includes('SELECT * FROM users WHERE email = ?')) {
+    const users = readJSONFile(USERS_FILE);
+    const emailParam = params[0]?.toLowerCase().trim();
+    return users.filter(u => u.email?.toLowerCase().trim() === emailParam);
+  }
+
+  if (normalized.includes('SELECT * FROM users WHERE id = ?')) {
+    const users = readJSONFile(USERS_FILE);
+    const idParam = String(params[0]);
+    return users.filter(u => String(u.id) === idParam);
+  }
+
+  if (normalized.includes('INSERT INTO users')) {
+    const users = readJSONFile(USERS_FILE);
+    const newUser = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      email: params[0]?.toLowerCase().trim(),
+      password_hash: params[1],
+      full_name: params[2],
+      profession: params[3] || 'Web Developer',
+      portfolio_url: params[4] || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    users.push(newUser);
+    writeJSONFile(USERS_FILE, users);
+    return { insertId: newUser.id };
+  }
+
+  if (normalized.includes('UPDATE users SET full_name = ?')) {
+    const users = readJSONFile(USERS_FILE);
+    const fullName = params[0];
+    const profession = params[1];
+    const portfolioUrl = params[2];
+    const targetId = String(params[3]);
+
+    const updated = users.map(u => {
+      if (String(u.id) === targetId) {
+        return {
+          ...u,
+          full_name: fullName,
+          profession,
+          portfolio_url: portfolioUrl,
+          updated_at: new Date().toISOString()
+        };
+      }
+      return u;
+    });
+    writeJSONFile(USERS_FILE, updated);
+    return { affectedRows: 1 };
+  }
+
   // 1. LEADS QUERIES
+  if (normalized.includes('SELECT * FROM leads WHERE user_id = ? ORDER BY')) {
+    const leads = readJSONFile(LEADS_FILE);
+    const userIdParam = String(params[0]);
+    return leads
+      .filter(l => l.user_id && String(l.user_id) === userIdParam)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+
   if (normalized.includes('SELECT * FROM leads ORDER BY')) {
     const leads = readJSONFile(LEADS_FILE);
     return leads.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -84,6 +147,34 @@ function executeJSONQuery(query, params = []) {
       
       return nameMatch || phoneMatch;
     }).map(l => ({ id: l.id }));
+  }
+
+  if (normalized.includes('INSERT INTO leads') && normalized.includes('user_id')) {
+    const leads = readJSONFile(LEADS_FILE);
+    const newLead = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      user_id: params[0] || null,
+      business_name: params[1],
+      category: params[2],
+      location: params[3],
+      phone_number: params[4],
+      rating: parseFloat(params[5]) || null,
+      reviews_count: parseInt(params[6]) || 0,
+      status: params[7] || 'Scraped',
+      estimated_owner_name: params[8] || 'Unknown',
+      primary_contact_email: params[9] || null,
+      primary_social_pitch_url: params[10] || null,
+      confidence_score: params[11] || 'Low',
+      quick_pitch_hook: params[12] || '',
+      personalized_subject: params[13] || '',
+      personalized_body: params[14] || '',
+      personalized_whatsapp: params[15] || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    leads.push(newLead);
+    writeJSONFile(LEADS_FILE, leads);
+    return { insertId: newLead.id };
   }
 
   if (normalized.includes('INSERT INTO leads')) {
@@ -308,6 +399,124 @@ async function executeQuery(query, params = []) {
 }
 
 // -------------------------------------------------------------
+// Authentication & Profile Routes
+// -------------------------------------------------------------
+app.post('/api/auth/register', async (req, res) => {
+  const { email, password, full_name, profession, portfolio_url } = req.body;
+  if (!email || !password || !full_name) {
+    return res.status(400).json({ error: 'Email, password, and full name are required.' });
+  }
+
+  try {
+    const existing = await executeQuery('SELECT * FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    if (existing && existing.length > 0) {
+      return res.status(409).json({ error: 'An account with this email already exists.' });
+    }
+
+    const password_hash = await hashPassword(password);
+    const result = await executeQuery(
+      'INSERT INTO users (email, password_hash, full_name, profession, portfolio_url) VALUES (?, ?, ?, ?, ?)',
+      [email.toLowerCase().trim(), password_hash, full_name.trim(), profession?.trim() || 'Web Developer', portfolio_url?.trim() || '']
+    );
+
+    const userId = result.insertId;
+    const user = {
+      id: userId,
+      email: email.toLowerCase().trim(),
+      full_name: full_name.trim(),
+      profession: profession?.trim() || 'Web Developer',
+      portfolio_url: portfolio_url?.trim() || ''
+    };
+
+    const token = generateToken(user);
+    res.status(201).json({ success: true, token, user });
+  } catch (err) {
+    console.error('[AUTH] Registration error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  try {
+    const users = await executeQuery('SELECT * FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    if (!users || users.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const user = users[0];
+    const match = await comparePassword(password, user.password_hash);
+    if (!match) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const safeUser = {
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      profession: user.profession || 'Web Developer',
+      portfolio_url: user.portfolio_url || ''
+    };
+
+    const token = generateToken(safeUser);
+    res.json({ success: true, token, user: safeUser });
+  } catch (err) {
+    console.error('[AUTH] Login error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    const users = await executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    if (!users || users.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const user = users[0];
+    res.json({
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      profession: user.profession || 'Web Developer',
+      portfolio_url: user.portfolio_url || ''
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/auth/profile', requireAuth, async (req, res) => {
+  const { full_name, profession, portfolio_url } = req.body;
+  if (!full_name) {
+    return res.status(400).json({ error: 'Full name is required.' });
+  }
+
+  try {
+    await executeQuery(
+      'UPDATE users SET full_name = ?, profession = ?, portfolio_url = ? WHERE id = ?',
+      [full_name.trim(), profession?.trim() || 'Web Developer', portfolio_url?.trim() || '', req.user.id]
+    );
+
+    const updatedUser = {
+      id: req.user.id,
+      email: req.user.email,
+      full_name: full_name.trim(),
+      profession: profession?.trim() || 'Web Developer',
+      portfolio_url: portfolio_url?.trim() || ''
+    };
+
+    const token = generateToken(updatedUser);
+    res.json({ success: true, user: updatedUser, token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
 // API Settings Routes
 // -------------------------------------------------------------
 app.get('/api/settings', (req, res) => {
@@ -315,10 +524,10 @@ app.get('/api/settings', (req, res) => {
     DB_HOST: process.env.DB_HOST || 'localhost',
     DB_USER: process.env.DB_USER || 'root',
     DB_PASSWORD: process.env.DB_PASSWORD || '',
-    DB_NAME: process.env.DB_NAME || 'client_scrapper',
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+    DB_NAME: process.env.DB_NAME || 'prospectly',
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY ? 'CONFIGURED' : '',
     GMAIL_USER: process.env.GMAIL_USER || '',
-    GMAIL_PASS: process.env.GMAIL_PASS || '',
+    GMAIL_PASS: process.env.GMAIL_PASS ? 'CONFIGURED' : '',
     SMTP_DELAY: process.env.SMTP_DELAY || '30'
   });
 });
@@ -335,9 +544,15 @@ app.post('/api/settings', (req, res) => {
 // -------------------------------------------------------------
 // Leads Routes
 // -------------------------------------------------------------
-app.get('/api/leads', async (req, res) => {
+app.get('/api/leads', optionalAuth, async (req, res) => {
   try {
-    const leads = await executeQuery('SELECT * FROM leads ORDER BY created_at DESC');
+    let leads;
+    if (req.user && req.user.id) {
+      leads = await executeQuery('SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
+    } else {
+      // Unauthenticated visitors do not see any user's private leads
+      leads = [];
+    }
     res.json(leads);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -390,15 +605,19 @@ app.put('/api/leads/:id', async (req, res) => {
 });
 
 // Endpoint to generate/regenerate custom WhatsApp message for a specific lead
-app.post('/api/leads/:id/generate-whatsapp', async (req, res) => {
+app.post('/api/leads/:id/generate-whatsapp', optionalAuth, async (req, res) => {
   const { id } = req.params;
-  const { language, tone, customInstructions } = req.body || {};
+  const { language, tone, customInstructions, sender_name, sender_profession, sender_portfolio } = req.body || {};
   try {
     const leads = await executeQuery('SELECT * FROM leads WHERE id = ?', [id]);
     const lead = Array.isArray(leads) && leads.length > 0 ? leads[0] : null;
     if (!lead) {
       return res.status(404).json({ error: 'Lead not found' });
     }
+
+    const effectiveName = sender_name || (req.user && req.user.full_name) || 'Art Halimi';
+    const effectiveProfession = sender_profession || (req.user && req.user.profession) || 'Web Developer';
+    const effectivePortfolio = sender_portfolio || (req.user && req.user.portfolio_url) || 'arthalimi.com';
 
     const message = await generateCustomWhatsApp({
       business_name: lead.business_name,
@@ -410,7 +629,10 @@ app.post('/api/leads/:id/generate-whatsapp', async (req, res) => {
       estimated_owner_name: lead.estimated_owner_name,
       language: language || null,
       tone: tone || 'Professional & Friendly',
-      customInstructions: customInstructions || ''
+      customInstructions: customInstructions || '',
+      sender_name: effectiveName,
+      sender_profession: effectiveProfession,
+      sender_portfolio: effectivePortfolio
     });
 
     // Save generated message back to lead record
@@ -427,7 +649,7 @@ app.post('/api/leads/:id/generate-whatsapp', async (req, res) => {
 });
 
 // Direct on-demand WhatsApp message generator endpoint
-app.post('/api/generate-whatsapp', async (req, res) => {
+app.post('/api/generate-whatsapp', optionalAuth, async (req, res) => {
   try {
     const {
       business_name,
@@ -439,8 +661,15 @@ app.post('/api/generate-whatsapp', async (req, res) => {
       estimated_owner_name,
       language,
       tone,
-      customInstructions
+      customInstructions,
+      sender_name,
+      sender_profession,
+      sender_portfolio
     } = req.body;
+
+    const effectiveName = sender_name || (req.user && req.user.full_name) || 'Art Halimi';
+    const effectiveProfession = sender_profession || (req.user && req.user.profession) || 'Web Developer';
+    const effectivePortfolio = sender_portfolio || (req.user && req.user.portfolio_url) || 'arthalimi.com';
 
     const message = await generateCustomWhatsApp({
       business_name: business_name || 'Local Business',
@@ -452,7 +681,10 @@ app.post('/api/generate-whatsapp', async (req, res) => {
       estimated_owner_name: estimated_owner_name || '',
       language: language || null,
       tone: tone || 'Professional & Friendly',
-      customInstructions: customInstructions || ''
+      customInstructions: customInstructions || '',
+      sender_name: effectiveName,
+      sender_profession: effectiveProfession,
+      sender_portfolio: effectivePortfolio
     });
 
     res.json({ success: true, message });
@@ -759,7 +991,7 @@ app.post('/api/scrape/stop', (req, res) => {
   res.json({ success: true, message: 'Scraping halted by user.' });
 });
 
-app.post('/api/scrape', async (req, res) => {
+app.post('/api/scrape', optionalAuth, async (req, res) => {
   const { query, minRating, limit } = req.body;
 
   res.setHeader('Content-Type', 'text/plain');
@@ -770,6 +1002,11 @@ app.post('/api/scrape', async (req, res) => {
       res.write(`${msg}\n`);
     }
   };
+
+  const senderName = (req.user && req.user.full_name) || 'Art Halimi';
+  const senderProfession = (req.user && req.user.profession) || 'Web Developer';
+  const senderPortfolio = (req.user && req.user.portfolio_url) || 'arthalimi.com';
+  const userId = (req.user && req.user.id) || null;
 
   try {
     streamWrite(`[INFO] Connected to scraping stream...`);
@@ -845,17 +1082,33 @@ app.post('/api/scrape', async (req, res) => {
         continue;
       }
 
+      // 1. Direct Domain Probe (Double-check if [cleanBizName].com or regional domain is live)
+      streamWrite(`[SHIELD] Lead #${i+1}/${rawLeads.length}: Probing direct domain records for "${lead.business_name}"...`);
+      const directDomain = await probeDirectDomain(lead.business_name, lead.location);
+      if (directDomain) {
+        streamWrite(`[SHIELD] Skipped: "${lead.business_name}" already has an active commercial website: ${directDomain}`);
+        continue;
+      }
+
       streamWrite(`[OSINT] Lead #${i+1}/${rawLeads.length}: Initiating web search for "${lead.business_name}"...`);
 
-      // Search Google for email and social snippets
+      // 2. Search Google for email and social snippets
       const searchSnippets = await scrapeSearchSnippets({
         businessName: lead.business_name,
         location: lead.location
       });
 
+      // 3. Reject if organic Google Search detected an active company domain
+      if (searchSnippets && searchSnippets.includes('[DETECTED ACTIVE COMPANY DOMAIN VIA ORGANIC SEARCH]')) {
+        const domainMatch = searchSnippets.match(/Official Website:\s*(https?:\/\/[^\s]+)/i);
+        const websiteUrl = domainMatch ? domainMatch[1] : 'Active Website';
+        streamWrite(`[OSINT] Skipped: "${lead.business_name}" already has an official website discovered in search: ${websiteUrl}`);
+        continue;
+      }
+
       streamWrite(`[GEMINI] Analyzing snippets using Gemini AI...`);
 
-      // Enrich lead using Gemini
+      // 4. Enrich lead using Gemini with user's sender profile
       const enriched = await enrichLeadDetails({
         business_name: lead.business_name,
         category: lead.category,
@@ -863,18 +1116,22 @@ app.post('/api/scrape', async (req, res) => {
         phone_number: lead.phone_number,
         rating: lead.rating,
         reviews_count: lead.reviews_count,
-        search_snippets: searchSnippets
+        search_snippets: searchSnippets,
+        sender_name: senderName,
+        sender_profession: senderProfession,
+        sender_portfolio: senderPortfolio
       });
 
-      // Filter out leads that already have an official website discovered online
+      // 5. Filter out leads that already have an official website discovered online
       if (enriched.status === 'Website Exists' || enriched.discovered_website) {
-        streamWrite(`[OSINT] Skipping: "${lead.business_name}" already has an official website discovered: ${enriched.discovered_website}`);
+        streamWrite(`[GEMINI] Skipped: "${lead.business_name}" already has an official website discovered: ${enriched.discovered_website || 'Active Website'}`);
         continue;
       }
 
       // Map response fields
       const finalLead = {
         ...lead,
+        user_id: userId,
         status: enriched.status === 'Lead Found' ? 'Enriched' : 'No Context Found',
         estimated_owner_name: enriched.estimated_owner_name || 'Unknown',
         primary_contact_email: enriched.primary_contact_email || null,
@@ -886,13 +1143,14 @@ app.post('/api/scrape', async (req, res) => {
         personalized_whatsapp: enriched.personalized_whatsapp || ''
       };
 
-      // Save to MySQL DB
-      streamWrite(`[DATABASE] Saving lead to MySQL table...`);
+      // Save to MySQL DB / JSON storage with user_id
+      streamWrite(`[DATABASE] Saving lead to database...`);
       await executeQuery(
         `INSERT INTO leads 
-          (business_name, category, location, phone_number, rating, reviews_count, status, estimated_owner_name, primary_contact_email, primary_social_pitch_url, confidence_score, quick_pitch_hook, personalized_subject, personalized_body, personalized_whatsapp) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (user_id, business_name, category, location, phone_number, rating, reviews_count, status, estimated_owner_name, primary_contact_email, primary_social_pitch_url, confidence_score, quick_pitch_hook, personalized_subject, personalized_body, personalized_whatsapp) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
+          finalLead.user_id,
           finalLead.business_name,
           finalLead.category,
           finalLead.location,

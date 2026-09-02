@@ -19,6 +19,7 @@ uniform float uScan;
 uniform float uScanFreq;
 uniform float uWarp;
 uniform float uLightMode;
+uniform float uGrayscale;
 #define iTime uTime
 #define iResolution uResolution
 
@@ -81,6 +82,10 @@ void main(){
       vec3 ink=mix(hue*0.32,hue*0.78,smoothstep(0.0,1.0,energy));
       result=mix(vec3(1.0),ink,coverage*0.82);
     }
+    if(uGrayscale>0.5){
+      float gray=dot(result,vec3(0.299,0.587,0.114));
+      result=vec3(gray);
+    }
     gl_FragColor=vec4(result,1.0);
 }
 `;
@@ -93,7 +98,8 @@ export default function DarkVeil({
   scanlineFrequency = 0,
   warpAmount = 0.05,
   resolutionScale = 0.75,
-  lightMode = false
+  lightMode = false,
+  grayscale = false
 }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -127,7 +133,8 @@ export default function DarkVeil({
         uScan: { value: scanlineIntensity },
         uScanFreq: { value: scanlineFrequency },
         uWarp: { value: warpAmount },
-        uLightMode: { value: lightMode ? 1 : 0 }
+        uLightMode: { value: lightMode ? 1 : 0 },
+        uGrayscale: { value: grayscale ? 1 : 0 }
       }
     });
 

@@ -298,35 +298,94 @@ export async function scrapeGoogleMaps({ query, minRating = 4.0, limit = 10, log
           const phoneBtn = document.querySelector('button[data-item-id^="phone:tel:"]');
           const phone = phoneBtn ? phoneBtn.getAttribute('data-item-id').replace('phone:tel:', '').trim() : null;
 
-          // Address
+          // Address with unicode cleanup
           const addressBtn = document.querySelector('button[data-item-id="address"]');
-          const address = addressBtn ? addressBtn.innerText.trim() : '';
+          const rawAddress = addressBtn ? addressBtn.innerText.trim() : '';
+          const address = rawAddress
+            .replace(/[\uE000-\uF8FF]/gu, '') // strip Private Use Area unicode icons like 
+            .replace(/\n+/g, ', ')
+            .replace(/\s+/g, ' ')
+            .trim();
 
           // Category
           const categoryNode = document.querySelector('button[jsaction*="category"]');
           const category = categoryNode ? categoryNode.innerText.trim() : '';
 
+          // Helper to unwrap google redirect URL and clean
+          const extractCleanExternalUrl = (href) => {
+            if (!href) return null;
+            try {
+              if (href.includes('google.com/url?') || href.includes('google.com/maps/url?')) {
+                const u = new URL(href);
+                const target = u.searchParams.get('q') || u.searchParams.get('url');
+                if (target && !target.includes('google.com') && !target.includes('goo.gl')) return target;
+              }
+              const lower = href.toLowerCase();
+              if (!lower.includes('google.com') && !lower.includes('goo.gl') && !lower.includes('gstatic.com') && !lower.includes('ggpht.com')) {
+                return href;
+              }
+            } catch (e) {}
+            return null;
+          };
+
           // Website Detection
           let website = null;
-          const websiteBtn = document.querySelector('a[data-item-id="authority"]');
-          if (websiteBtn && websiteBtn.href && !websiteBtn.href.includes('google.com/maps')) {
-            website = websiteBtn.href;
+
+          // 1. Check data-item-id="authority"
+          const websiteBtn = document.querySelector('a[data-item-id^="authority"], button[data-item-id^="authority"] a, a[data-item-id="authority"]');
+          if (websiteBtn && websiteBtn.href) {
+            const unwrapped = extractCleanExternalUrl(websiteBtn.href);
+            if (unwrapped) website = unwrapped;
           }
 
+          // 2. Check localized aria-labels and tooltips (EN, DE, AL, FR, IT, ES, etc.)
           if (!website) {
-            const altWebsiteAnchor = document.querySelector('a[aria-label*="website" i], a[aria-label*="webseite" i], a[data-tooltip*="website" i], a[data-tooltip*="webseite" i]');
-            if (altWebsiteAnchor && altWebsiteAnchor.href && !altWebsiteAnchor.href.includes('google.com/maps')) {
-              website = altWebsiteAnchor.href;
+            const websiteSelector = [
+              'a[aria-label*="website" i]',
+              'a[aria-label*="webseite" i]',
+              'a[aria-label*="uebsajt" i]',
+              'a[aria-label*="faqja" i]',
+              'a[aria-label*="site" i]',
+              'a[aria-label*="sitio" i]',
+              'a[data-tooltip*="website" i]',
+              'a[data-tooltip*="webseite" i]',
+              'a[data-tooltip*="site" i]',
+              'a[data-tooltip*="uebsajt" i]'
+            ].join(',');
+            const altWebsiteAnchor = document.querySelector(websiteSelector);
+            if (altWebsiteAnchor && altWebsiteAnchor.href) {
+              const unwrapped = extractCleanExternalUrl(altWebsiteAnchor.href);
+              if (unwrapped) website = unwrapped;
             }
           }
 
+          // 3. Check for Globe SVG Icon or action buttons with globe graphic
           if (!website) {
-            const allLinks = Array.from(document.querySelectorAll('div[role="region"] a[href^="http"], div.m6QErb a[href^="http"]'));
+            const allActionLinks = Array.from(document.querySelectorAll('a[role="button"], button a, a[data-item-id]'));
+            for (const link of allActionLinks) {
+              const unwrapped = extractCleanExternalUrl(link.href);
+              if (unwrapped) {
+                const text = link.innerText.toLowerCase();
+                if (text.includes('website') || text.includes('webseite') || text.includes('uebsajt') || text.includes('site') || text.includes('.com') || text.includes('.ch') || text.includes('.de')) {
+                  website = unwrapped;
+                  break;
+                }
+              }
+            }
+          }
+
+          // 4. Fallback: check any external link in the side panel
+          if (!website) {
+            const allLinks = Array.from(document.querySelectorAll('div[role="main"] a[href^="http"], div[role="region"] a[href^="http"], div.m6QErb a[href^="http"]'));
             for (const link of allLinks) {
-              const href = link.href.toLowerCase();
-              if (!href.includes('google.com') && !href.includes('goo.gl') && !href.includes('gstatic.com') && !href.includes('ggpht.com')) {
-                website = link.href;
-                break;
+              const unwrapped = extractCleanExternalUrl(link.href);
+              if (unwrapped) {
+                const lower = unwrapped.toLowerCase();
+                // Exclude social networks and review directories
+                if (!lower.includes('facebook.com') && !lower.includes('instagram.com') && !lower.includes('twitter.com') && !lower.includes('tiktok.com') && !lower.includes('youtube.com')) {
+                  website = unwrapped;
+                  break;
+                }
               }
             }
           }
@@ -422,6 +481,18 @@ async function crawlUrlForEmail(page, url) {
   return null;
 }
 
+// Helper to unwrap google redirect URL
+function unwrapGoogleUrl(url) {
+  if (!url) return '';
+  try {
+    if (url.includes('google.com/url?') || url.includes('google.com/maps/url?')) {
+      const u = new URL(url);
+      return u.searchParams.get('q') || u.searchParams.get('url') || url;
+    }
+  } catch (e) {}
+  return url;
+}
+
 // Common directory, social, and search domains to exclude when looking for an official website
 const DIRECTORY_DOMAINS = [
   'google.', 'facebook.com', 'fb.com', 'instagram.com', 'linkedin.com', 'youtube.com',
@@ -429,7 +500,10 @@ const DIRECTORY_DOMAINS = [
   'dastelefonbuch.de', 'local.ch', 'search.ch', 'zefix.ch', 'moneyhouse.ch', 'kompass.com',
   'firmenwissen.de', 'tripadvisor.', 'wlw.de', 'herold.at', 'cylex.', 'golocal.de',
   '11880.com', 'mapquest.com', 'tiktok.com', 'pinterest.com', 'wikipedia.org', 'webwiki.de',
-  'branchenbuch.', 'stadtbranchenbuch.', 'firmeneintrag.'
+  'branchenbuch.', 'stadtbranchenbuch.', 'firmeneintrag.',
+  // Albanian / Balkan directories and classifieds
+  'merrjep.', 'dyqani.', 'veturaneshitje.', 'findglocal.', 'infoproff.', 'teve1.', 'gazeta',
+  'kallxo.', 'indeksonline.', 'telegrafi.', 'rks-gov.', 'atlas-studio.', 'gjirafa.'
 ];
 
 function isDirectoryOrSocialUrl(url) {
@@ -439,6 +513,52 @@ function isDirectoryOrSocialUrl(url) {
   } catch (e) {
     return true;
   }
+}
+
+/**
+ * Direct Domain Prober
+ * Checks if the exact business name has an active commercial domain (e.g. autosallonipo.com)
+ */
+export async function probeDirectDomain(businessName, location = '') {
+  if (!businessName) return null;
+  const clean = businessName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!clean || clean.length < 3) return null;
+
+  const loc = (location || '').toLowerCase();
+  const extensions = ['.com', '.net'];
+  if (loc.includes('schweiz') || loc.includes('switzerland') || loc.includes('zürich') || loc.includes('bern')) {
+    extensions.unshift('.ch');
+  } else if (loc.includes('deutschland') || loc.includes('germany') || loc.includes('hamburg') || loc.includes('berlin')) {
+    extensions.unshift('.de');
+  } else if (loc.includes('österreich') || loc.includes('austria') || loc.includes('wien')) {
+    extensions.unshift('.at');
+  } else if (loc.includes('kosov') || loc.includes('prishtin') || loc.includes('albania') || loc.includes('tiran')) {
+    extensions.unshift('.al');
+  }
+
+  const candidateUrls = [];
+  for (const ext of extensions) {
+    candidateUrls.push(`https://${clean}${ext}`);
+    candidateUrls.push(`https://www.${clean}${ext}`);
+  }
+
+  // Probe candidates with fast timeout
+  for (const candidate of candidateUrls.slice(0, 4)) {
+    try {
+      const res = await fetch(candidate, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(2500),
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+      });
+      if (res.status >= 200 && res.status < 400) {
+        console.log(`[DIRECT PROBE SHIELD] Detected live website for "${businessName}": ${candidate} (Status ${res.status})`);
+        return candidate;
+      }
+    } catch (e) {
+      // not reachable
+    }
+  }
+  return null;
 }
 
 // OSINT: Puppeteer Google Search for social snippets & active website detection
@@ -453,8 +573,17 @@ export async function scrapeSearchSnippets({ businessName, location }) {
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-  // Query searches for email, impressum, website, facebook page and contact info
-  const searchQuery = `${businessName} ${location} email impressum website`;
+  // Clean location string and extract city
+  const cleanLoc = (location || '')
+    .replace(/[\uE000-\uF8FF]/gu, '')
+    .replace(/\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const locParts = cleanLoc.split(',').map(s => s.trim()).filter(Boolean);
+  const city = locParts.length > 1 ? locParts[locParts.length - 1].replace(/\b\d{4,5}\b/g, '').trim() : cleanLoc;
+
+  // Query searches for email, impressum, website, and company identity
+  const searchQuery = `"${businessName}" ${city || ''} email impressum website`;
   const url = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&hl=en`;
   
   try {
@@ -502,21 +631,23 @@ export async function scrapeSearchSnippets({ businessName, location }) {
     // Domain Shield: Check if any organic search result link is an official company domain
     let detectedLiveWebsite = null;
     const cleanBizName = businessName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const bizWords = businessName.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !['gmbh', 'ag', 'und', 'and', 'the', 'der', 'die', 'das', 'co', 'kg', 'e.k.', 'ltd', 'inc'].includes(w));
+    const bizWords = businessName.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !['gmbh', 'ag', 'und', 'and', 'the', 'der', 'die', 'das', 'co', 'kg', 'e.k.', 'ltd', 'inc', 'sallon', 'autosallon', 'auto'].includes(w));
 
     for (const r of results) {
-      if (!r.link || isDirectoryOrSocialUrl(r.link)) continue;
+      const cleanUrl = unwrapGoogleUrl(r.link);
+      if (!cleanUrl || isDirectoryOrSocialUrl(cleanUrl)) continue;
       try {
-        const host = new URL(r.link).hostname.toLowerCase().replace(/^www\./, '');
+        const host = new URL(cleanUrl).hostname.toLowerCase().replace(/^www\./, '');
         const hostClean = host.replace(/[^a-z0-9]/g, '');
         
         // Check if hostname strongly matches business name
-        const matchesName = (cleanBizName.length > 4 && hostClean.includes(cleanBizName.slice(0, 8))) ||
-                            bizWords.some(w => host.includes(w) && w.length >= 3);
+        const matchesName = (cleanBizName.length >= 4 && hostClean.includes(cleanBizName.slice(0, 7))) ||
+                            bizWords.some(w => w.length >= 3 && host.includes(w)) ||
+                            (r.title && r.title.toLowerCase().includes(businessName.toLowerCase()));
 
         if (matchesName) {
-          detectedLiveWebsite = r.link;
-          console.log(`[OSINT SHIELD] Detected potential active website: ${r.link} for "${businessName}"`);
+          detectedLiveWebsite = cleanUrl;
+          console.log(`[OSINT SHIELD] Detected potential active website: ${cleanUrl} for "${businessName}"`);
           break;
         }
       } catch (uErr) {
@@ -524,16 +655,30 @@ export async function scrapeSearchSnippets({ businessName, location }) {
       }
     }
 
-    // Deep Crawl external links in parallel for email detection
-    const emailPromises = results.map(r => crawlUrlForEmail(page, r.link));
-    const crawledEmails = await Promise.all(emailPromises);
-    const foundEmails = crawledEmails.filter(Boolean);
+    // Crawl external links sequentially for candidate email detection
+    const foundEmails = [];
+    const candidateLinks = results
+      .map(r => unwrapGoogleUrl(r.link))
+      .filter(l => l && !l.includes('google.com') && !l.includes('youtube.com'))
+      .slice(0, 3);
+
+    for (const link of candidateLinks) {
+      try {
+        const candidateEmail = await crawlUrlForEmail(page, link);
+        if (candidateEmail) {
+          foundEmails.push(candidateEmail);
+        }
+      } catch (crawlErr) {
+        // Non-blocking
+      }
+    }
 
     await browser.close();
     
     // Format as string blocks for the LLM, appending any directly crawled email addresses and detected websites
     let formattedSnippets = results.map((r, i) => {
-      return `Result #${i+1}:\nTitle: ${r.title}\nLink: ${r.link}\nSnippet: ${r.snippet}\n---`;
+      const cleanLink = unwrapGoogleUrl(r.link);
+      return `Result #${i+1}:\nTitle: ${r.title}\nLink: ${cleanLink}\nSnippet: ${r.snippet}\n---`;
     }).join('\n');
 
     if (detectedLiveWebsite) {

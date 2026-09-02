@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import WhatsAppModal, { cleanPhoneForWhatsApp, classifyPhoneNumber } from '../components/WhatsAppModal';
 
 const Dashboard = () => {
+  const { user, token } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -67,16 +69,18 @@ const Dashboard = () => {
   const fetchLeads = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/leads');
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('http://localhost:5000/api/leads', { headers });
       if (res.ok) {
         const data = await res.json();
         setLeads(data);
       } else {
-        setLeads(getMockLeads());
+        setLeads([]);
       }
     } catch (err) {
-      console.warn("Backend not running yet, using mock leads.");
-      setLeads(getMockLeads());
+      console.warn("Backend not running or unreachable:", err);
+      setLeads([]);
     }
     setLoading(false);
   };
@@ -95,7 +99,7 @@ const Dashboard = () => {
       setSearchParams({});
       triggerScraping(queryParam, rating, limit);
     }
-  }, []);
+  }, [token]);
 
   const handleStopScraping = async () => {
     if (abortControllerRef.current) {
@@ -118,9 +122,12 @@ const Dashboard = () => {
     abortControllerRef.current = new AbortController();
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const response = await fetch('http://localhost:5000/api/scrape', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ query: queryStr, minRating, limit: maxLeads }),
         signal: abortControllerRef.current.signal
       });
@@ -606,14 +613,27 @@ const Dashboard = () => {
     if (!activeLead) return;
     setInspectorGenerating(true);
     setInspectorLanguage(langToUse);
+
+    const senderName = user?.full_name || 'Art Halimi';
+    const senderProfession = user?.profession || 'Web Developer';
+    const senderPortfolio = user?.portfolio_url || 'arthalimi.com';
+    const senderFirstName = senderName.split(' ')[0] || 'Art';
+    const portfolioSnippet = senderPortfolio ? ` (${senderPortfolio})` : '';
+
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`http://localhost:5000/api/leads/${activeLead.id}/generate-whatsapp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           language: langToUse,
           tone: toneToUse,
-          customInstructions: ''
+          customInstructions: '',
+          sender_name: senderName,
+          sender_profession: senderProfession,
+          sender_portfolio: senderPortfolio
         })
       });
 
@@ -628,10 +648,10 @@ const Dashboard = () => {
         const isGerman = (langToUse === 'Deutsch' || langToUse === 'German');
         const isAlbanian = langToUse === 'Albanian';
         const fallbackMsg = isGerman
-          ? `Hallo, ich bin Art Halimi, ich mache Webseiten (arthalimi.com).\n\nHab ${activeLead.business_name} auf Google Maps gesehen - sieht gut aus. Mir ist aufgefallen dass ihr keine eigene Webseite habt.\n\nIch mach sowas beruflich und würde euch gerne mal nen kostenlosen Entwurf zeigen, einfach damit ihr seht wie das aussehen könnte. Kein Vertrag, kein Stress.\n\nFalls Interesse besteht einfach kurz antworten, dann können wir 5 Minuten telefonieren.\n\nGruss, Art`
+          ? `Hallo, ich bin ${senderName}, ich mache Webseiten${portfolioSnippet}.\n\nHab ${activeLead.business_name} auf Google Maps gesehen - sieht gut aus. Mir ist aufgefallen dass ihr keine eigene Webseite habt.\n\nIch mach sowas beruflich und würde euch gerne mal nen kostenlosen Entwurf zeigen, einfach damit ihr seht wie das aussehen könnte. Kein Vertrag, kein Stress.\n\nFalls Interesse besteht einfach kurz antworten, dann können wir 5 Minuten telefonieren.\n\nGruss, ${senderFirstName}`
           : isAlbanian
-          ? `Pershendetje, une jam Art Halimi, merrem me web development (arthalimi.com).\n\nE pashe ${activeLead.business_name} ne Google Maps, duket mire. Vetem vura re qe nuk keni nje webfaqe tuajen.\n\nUne i boj webfaqe profesionale dhe doja me ju tregu nje draft falas, vetem me pa se si do te dukej. Pa asnje obligim.\n\nNese ju intereson, thjesht me kthy nje pergjigje te shkurter.\n\nFaleminderit, Art`
-          : `Hey, I'm Art Halimi, I build websites (arthalimi.com).\n\nFound ${activeLead.business_name} on Google Maps - looks solid. Noticed you don't have your own website though.\n\nI do this for a living and I'd be happy to put together a free draft for you, just so you can see what it could look like. No strings attached.\n\nIf you're interested just shoot me a quick reply and we can hop on a 5 min call.\n\nCheers, Art`;
+          ? `Pershendetje, une jam ${senderName}...\n\nJam ${senderProfession}, pra me profesion krijoj website per biznese te ndryshme.\n\nE pashe ${activeLead.business_name} ne Google Maps, dhe e pashe qe keni kogja vlersime te mira.\n\nNese jeni te interesum, mundem me jau kriju nje dizajn koncept se qysh mundet mu dok nje faqe per biznesin tuj, pa asnje obligim, dhe nese ju pelqen mundemi me diskutu per detaje.\n\nFaleminderit, ${senderFirstName}`
+          : `Hey, I'm ${senderName}, I build websites${portfolioSnippet}.\n\nFound ${activeLead.business_name} on Google Maps - looks solid. Noticed you don't have your own website though.\n\nI do this for a living and I'd be happy to put together a free draft for you, just so you can see what it could look like. No strings attached.\n\nIf you're interested just shoot me a quick reply and we can hop on a 5 min call.\n\nCheers, ${senderFirstName}`;
         setInspectorMessage(fallbackMsg);
         setLeads(leads.map(l => l.id === activeLead.id ? { ...l, personalized_whatsapp: fallbackMsg } : l));
       }
@@ -1037,17 +1057,17 @@ const Dashboard = () => {
               return (
                 <div
                   key={lead.id}
-                  className={`bg-zinc-950/80 border transition-all duration-200 rounded-2xl overflow-hidden backdrop-blur-2xl shadow-lg ${
+                  className={`bg-zinc-950/80 border rounded-2xl overflow-hidden backdrop-blur-2xl card-hover-lift transition-all duration-300 ${
                     isExpanded
-                      ? 'border-zinc-600 shadow-[0_20px_50px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.08)]'
-                      : 'border-zinc-800/80 hover:border-zinc-700'
+                      ? 'border-zinc-500 shadow-[0_20px_50px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.12)]'
+                      : 'border-zinc-800/80 hover:border-zinc-700 shadow-md'
                   }`}
                 >
                   {/* Lead Summary Row (Clickable Accordion Header) */}
                   <div
                     onClick={() => toggleLeadExpand(lead.id)}
-                    className={`px-5 py-4 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
-                      isExpanded ? 'bg-zinc-900/60' : 'hover:bg-zinc-900/30'
+                    className={`px-5 py-4 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors duration-200 ${
+                      isExpanded ? 'bg-zinc-900/70' : 'hover:bg-zinc-900/40'
                     }`}
                   >
                     {/* Left details */}
@@ -1489,11 +1509,7 @@ const Dashboard = () => {
               {/* Modal Header */}
               <div className="relative z-10 flex items-start justify-between mb-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-1.5 text-zinc-500 text-[10px] font-mono-accent uppercase tracking-[0.2em]">
-                    <span className="w-1 h-1 rounded-full bg-zinc-400"></span>
-                    <span>Google Maps Client Acquisition</span>
-                    <span className="w-1 h-1 rounded-full bg-zinc-400"></span>
-                  </div>
+
                   <h3 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white font-display">
                     Launch New Extraction
                   </h3>

@@ -1,6 +1,6 @@
-# ClientScrapper — Autonomous B2B Lead Generation & Outreach Platform
+# Prospectly — Autonomous B2B Lead Generation & Outreach Platform
 
-**ClientScrapper** is a self-hosted, full-stack B2B lead generation, enrichment, and cold outreach platform built for web developers and digital agencies.
+**Prospectly** is a self-hosted, full-stack B2B lead generation, enrichment, and cold outreach platform built for web developers and digital agencies.
 
 It automatically finds local businesses on **Google Maps** that have **high ratings and reviews but NO active website**, enriches them with owner names and contact details via live OSINT search, calculates their **Website Buying Intent Score (0–98%)**, drafts human-written personalized outreach pitches using **Google Gemini AI**, and executes cold outreach via **1-Click WhatsApp** and **automated Email Campaigns**.
 
@@ -9,7 +9,7 @@ It automatically finds local businesses on **Google Maps** that have **high rati
 ## 📑 Architecture Overview
 
 ```
-ClientScrapper/
+Prospectly/
 ├── server/                       # Backend (Node.js + Express)
 │   ├── db.js                     # MySQL Database initialization & schema migrations
 │   ├── index.js                  # Express API server & local JSON fallback engine

@@ -26,6 +26,7 @@ dist-ssr
 # Local Backend Settings & Databases
 server/.env
 server/leads.json
+server/users.json
 server/templates.json
 server/campaigns.json
 server/node_modules/

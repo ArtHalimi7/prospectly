@@ -1,6 +1,6 @@
-# ClientScrapper
+# Prospectly
 
-Autonomous B2B lead generation, OSINT enrichment, and cold outreach suite for web developers.
+Autonomous B2B lead generation, OSINT enrichment, and cold outreach platform — built for web developers and digital agencies.
 
 Scrapes Google Maps for local businesses that have high ratings and reviews but **NO active website**, calculates their **Website Buying Intent Score**, drafts human-written pitches via **Gemini 2.5 Flash**, and sends outreach via **1-Click WhatsApp** or **Nodemailer Email Campaigns**.
 
@@ -19,4 +19,4 @@ npm run server   # Express backend on http://localhost:5000
 npm run dev      # Vite frontend on http://localhost:5173
 ```
 
-For complete architecture documentation, API endpoints reference, and development guides, see [`project_guide.md`](file:///c:/Projects/ClientScrapper/project_guide.md).
+For complete architecture documentation, API endpoints reference, and development guides, see [`project_guide.md`](./project_guide.md).
