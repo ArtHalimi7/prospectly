@@ -1,7 +1,20 @@
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
-const JWT_SECRET = process.env.JWT_SECRET || '***REMOVED***';
+// Read the secret lazily: this module is imported before index.js loads .env.
+// There is no hardcoded fallback; without JWT_SECRET a random per-process secret
+// is used, so tokens can't be forged (sessions just reset on restart).
+const RANDOM_SECRET = crypto.randomBytes(48).toString('hex');
+let warnedMissingSecret = false;
+function jwtSecret() {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (!warnedMissingSecret) {
+    console.warn('[auth] JWT_SECRET is not set; using a random secret, so sessions reset on restart.');
+    warnedMissingSecret = true;
+  }
+  return RANDOM_SECRET;
+}
 
 export async function hashPassword(password) {
   const salt = await bcrypt.genSalt(10);
@@ -21,14 +34,14 @@ export function generateToken(user) {
       profession: user.profession,
       portfolio_url: user.portfolio_url
     },
-    JWT_SECRET,
+    jwtSecret(),
     { expiresIn: '30d' }
   );
 }
 
 export function verifyToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, jwtSecret());
   } catch (err) {
     return null;
   }
