@@ -33,3 +33,10 @@ server/node_modules/
 server/scraper_debug.png
 server/scraper_failed.png
 
+
+# Environment files and keys: never commit secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
